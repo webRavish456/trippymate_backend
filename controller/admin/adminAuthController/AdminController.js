@@ -50,7 +50,12 @@ const adminLogin=async(req,res)=>{
     }
     else{
         const token=jwt.sign({
-            email:adminDetails.email},
+            id: adminDetails._id,
+            _id: adminDetails._id,
+            email: adminDetails.email,
+            name: adminDetails.name,
+            role: 'admin'
+        },
             secretKey,
             {expiresIn:"28d"}
             

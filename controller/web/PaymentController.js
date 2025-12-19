@@ -30,16 +30,14 @@ const calculateBookingAmount = (guestDetails, packageData) => {
   let totalAmount = 0;
   const adultPrice = packageData?.price?.adult || packageData?.price || 0;
   const childPrice = packageData?.price?.child || 0;
-  const infantPrice = packageData?.price?.infant || 0;
 
   guestDetails?.forEach((guest) => {
     if (guest.guestAge > 18) {
       totalAmount += adultPrice;
     } else if (guest.guestAge >= 5) {
       totalAmount += childPrice;
-    } else {
-      totalAmount += infantPrice;
     }
+    // Age < 5: Free (no infant pricing)
   });
 
   return totalAmount;
@@ -482,6 +480,14 @@ export const verifyPayment = async (req, res) => {
       });
     }
 
+    // Get contact details from request
+    const contactName = req.body.contactName || '';
+    const contactPhone = req.body.contactPhone || '';
+    const contactAddress = req.body.contactAddress || '';
+
+    // Generate booking ID
+    const bookingId = `BK${Date.now()}${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+
     // Create booking
     const booking = await Booking.create({
       packageId,
@@ -494,12 +500,17 @@ export const verifyPayment = async (req, res) => {
       discountAmount,
       baseAmount,
       finalAmount,
+      totalAmount: finalAmount,
       paymentStatus: "completed",
       paymentId,
       orderId,
       paymentMethod: "razorpay",
       destinationId: destinationId || null,
       captainId: captainId || null,
+      contactName,
+      contactPhone,
+      contactAddress,
+      bookingId
     });
 
     // Update coupon/promo code usage count

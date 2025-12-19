@@ -1,6 +1,9 @@
 import CommunityTrip from '../../../models/CommunityTripModel.js';
 import CommunityMessage from '../../../models/CommunityMessageModel.js';
 import User from '../../../models/UserModel.js';
+import Notification from '../../../models/NotificationModel.js';
+import Admin from '../../../models/AdminModel.js';
+import { getIO } from '../../../socket/socketHandler.js';
 
 // Auto-delete messages when trip end date passes
 const deleteExpiredTripMessages = async () => {
@@ -166,6 +169,10 @@ const createCommunityTrip = async (req, res) => {
       }
     }
 
+    // Determine approval status - user-created trips need approval, admin-created are auto-approved
+    const isAdminRequest = req.user && req.user.role === 'admin';
+    const approvalStatus = isAdminRequest ? 'approved' : 'pending';
+
     const tripData = {
       title,
       description,
@@ -188,14 +195,50 @@ const createCommunityTrip = async (req, res) => {
       images,
       organizerImage,
       status: 'upcoming',
+      approvalStatus: approvalStatus,
       members: []
     };
 
     const newTrip = await CommunityTrip.create(tripData);
 
+    // If user-created trip, create notification for admins
+    if (!isAdminRequest && finalOrganizerId) {
+      const admins = await Admin.find({});
+      const user = await User.findById(finalOrganizerId);
+      
+      for (const admin of admins) {
+        await Notification.create({
+          adminId: admin._id,
+          type: 'community_trip_creation_request',
+          title: 'New Community Trip Request',
+          message: `${user?.name || user?.email || 'A user'} wants to create a community trip: "${title}"`,
+          tripId: newTrip._id,
+          requestUserId: finalOrganizerId,
+          isRead: false
+        });
+      }
+
+      // Emit Socket.IO notification
+      const io = getIO();
+      if (io) {
+        for (const admin of admins) {
+          io.to(`admin:${admin._id.toString()}`).emit('admin-notification', {
+            type: 'community_trip_creation_request',
+            title: 'New Community Trip Request',
+            message: `${user?.name || user?.email || 'A user'} wants to create a community trip: "${title}"`,
+            tripId: newTrip._id,
+            requestUserId: finalOrganizerId,
+            createdAt: new Date()
+          });
+        }
+      }
+    }
+
     return res.status(201).json({
       status: true,
-      message: "Community trip created successfully",
+      message: isAdminRequest 
+        ? "Community trip created successfully" 
+        : "Community trip request submitted. Waiting for admin approval.",
       data: newTrip
     });
 
@@ -216,10 +259,20 @@ const getAllCommunityTrips = async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
     const status = req.query.status;
+    const isAdmin = req.user && req.user.role === 'admin';
 
     const query = {};
     if (status) {
       query.status = status;
+    }
+    
+    // For non-admin users, only show approved trips
+    // Also include trips without approvalStatus (legacy trips - treat as approved)
+    if (!isAdmin) {
+      query.$or = [
+        { approvalStatus: 'approved' },
+        { approvalStatus: { $exists: false } } // Legacy trips without approvalStatus
+      ];
     }
 
     const totalTrips = await CommunityTrip.countDocuments(query);
@@ -383,7 +436,8 @@ const deleteCommunityTrip = async (req, res) => {
 const joinCommunityTrip = async (req, res) => {
   try {
     const { tripId } = req.params;
-    const { userId } = req.body;
+    // Get userId from token (req.user) or from body
+    const userId = req.user?.id || req.user?._id || req.user?.userId || req.body?.userId;
 
     if (!userId) {
       return res.status(400).json({
@@ -392,7 +446,7 @@ const joinCommunityTrip = async (req, res) => {
       });
     }
 
-    const trip = await CommunityTrip.findById(tripId);
+    const trip = await CommunityTrip.findById(tripId).populate('organizerId');
 
     if (!trip) {
       return res.status(404).json({
@@ -419,6 +473,15 @@ const joinCommunityTrip = async (req, res) => {
       });
     }
 
+    // Get user info
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({
+        status: false,
+        message: "User not found"
+      });
+    }
+
     // Add member
     trip.members.push({
       userId,
@@ -428,9 +491,76 @@ const joinCommunityTrip = async (req, res) => {
 
     await trip.save();
 
+    // Create notification for all admins
+    const admins = await Admin.find({});
+    console.log(`Creating notifications for ${admins.length} admins`);
+    const notifications = [];
+
+    for (const admin of admins) {
+      const notification = await Notification.create({
+        adminId: admin._id,
+        type: 'community_trip_join_request',
+        title: 'New Join Request',
+        message: `${user.name || user.email} wants to join "${trip.title}"`,
+        tripId: trip._id,
+        requestUserId: userId,
+        isRead: false
+      });
+
+      // Populate notification for better data
+      await notification.populate('requestUserId', 'name email profileImage');
+      await notification.populate('tripId', 'title location');
+
+      notifications.push(notification);
+      console.log(`Notification created for admin ${admin._id}: ${notification._id}`);
+    }
+
+    // Emit notification to all connected admin clients via Socket.IO
+    const io = getIO();
+    if (io) {
+      console.log('Socket.IO instance found, emitting notifications');
+      for (const notification of notifications) {
+        const adminId = notification.adminId.toString();
+        const populatedNotification = {
+          _id: notification._id,
+          type: 'community_trip_join_request',
+          title: 'New Join Request',
+          message: `${user.name || user.email} wants to join "${trip.title}"`,
+          tripId: notification.tripId ? {
+            _id: notification.tripId._id,
+            title: notification.tripId.title,
+            location: notification.tripId.location
+          } : {
+            _id: trip._id,
+            title: trip.title,
+            location: trip.location
+          },
+          requestUserId: notification.requestUserId ? {
+            _id: notification.requestUserId._id,
+            name: notification.requestUserId.name,
+            email: notification.requestUserId.email,
+            profileImage: notification.requestUserId.profileImage
+          } : {
+            _id: userId,
+            name: user.name,
+            email: user.email,
+            profileImage: user.profileImage
+          },
+          isRead: false,
+          isFavorite: false,
+          createdAt: notification.createdAt
+        };
+        
+        console.log(`Emitting notification to admin room: admin:${adminId}`);
+        io.to(`admin:${adminId}`).emit('admin-notification', populatedNotification);
+      }
+    } else {
+      console.log('Socket.IO instance not found');
+    }
+
     return res.status(200).json({
       status: true,
-      message: "Successfully joined the community trip",
+      message: "Join request submitted successfully. Waiting for admin approval.",
       data: trip
     });
   } catch (error) {
@@ -444,12 +574,134 @@ const joinCommunityTrip = async (req, res) => {
 };
 
 
+// Approve Community Trip
+const approveCommunityTrip = async (req, res) => {
+  try {
+    const { tripId } = req.params;
+    const trip = await CommunityTrip.findById(tripId).populate('organizerId');
+
+    if (!trip) {
+      return res.status(404).json({
+        status: false,
+        message: "Community trip not found"
+      });
+    }
+
+    if (trip.approvalStatus === 'approved') {
+      return res.status(400).json({
+        status: false,
+        message: "Trip is already approved"
+      });
+    }
+
+    trip.approvalStatus = 'approved';
+    await trip.save();
+
+    // Send email notification to user
+    if (trip.organizerId && trip.organizerId.email) {
+      // TODO: Implement email sending
+      console.log(`Sending approval email to ${trip.organizerId.email} for trip: ${trip.title}`);
+    }
+
+    // Update notification
+    await Notification.updateMany(
+      { tripId: trip._id, $or: [{ type: 'community_trip_join_request' }, { type: 'community_trip_creation_request' }] },
+      { isRead: true, readAt: new Date() }
+    );
+
+    // Emit Socket.IO event
+    const io = getIO();
+    if (io && trip.organizerId) {
+      io.to(`user:${trip.organizerId._id.toString()}`).emit('trip-approved', {
+        tripId: trip._id,
+        title: trip.title,
+        message: `Your community trip "${trip.title}" has been approved!`
+      });
+    }
+
+    return res.status(200).json({
+      status: true,
+      message: "Community trip approved successfully",
+      data: trip
+    });
+  } catch (error) {
+    console.error("Error approving community trip:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Error approving community trip",
+      error: error.message,
+    });
+  }
+};
+
+// Reject Community Trip
+const rejectCommunityTrip = async (req, res) => {
+  try {
+    const { tripId } = req.params;
+    const trip = await CommunityTrip.findById(tripId).populate('organizerId');
+
+    if (!trip) {
+      return res.status(404).json({
+        status: false,
+        message: "Community trip not found"
+      });
+    }
+
+    if (trip.approvalStatus === 'rejected') {
+      return res.status(400).json({
+        status: false,
+        message: "Trip is already rejected"
+      });
+    }
+
+    trip.approvalStatus = 'rejected';
+    await trip.save();
+
+    // Send email notification to user
+    if (trip.organizerId && trip.organizerId.email) {
+      // TODO: Implement email sending
+      console.log(`Sending rejection email to ${trip.organizerId.email} for trip: ${trip.title}`);
+    }
+
+    // Update notification
+    await Notification.updateMany(
+      { tripId: trip._id, $or: [{ type: 'community_trip_join_request' }, { type: 'community_trip_creation_request' }] },
+      { isRead: true, readAt: new Date() }
+    );
+
+    // Emit Socket.IO event
+    const io = getIO();
+    if (io && trip.organizerId) {
+      io.to(`user:${trip.organizerId._id.toString()}`).emit('trip-rejected', {
+        tripId: trip._id,
+        title: trip.title,
+        message: `Your community trip "${trip.title}" has been rejected.`
+      });
+    }
+
+    return res.status(200).json({
+      status: true,
+      message: "Community trip rejected successfully",
+      data: trip
+    });
+  } catch (error) {
+    console.error("Error rejecting community trip:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Error rejecting community trip",
+      error: error.message,
+    });
+  }
+};
+
 export {
   createCommunityTrip,
   getAllCommunityTrips,
   getCommunityTripById,
   updateCommunityTrip,
   deleteCommunityTrip,
-  joinCommunityTrip
+  joinCommunityTrip,
+  approveCommunityTrip,
+  rejectCommunityTrip
 };
 

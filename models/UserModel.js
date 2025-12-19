@@ -65,6 +65,33 @@ const UserSchema = new mongoose.Schema({
     },
     emailVerificationToken: {
         type: String
+    },
+    // Additional Profile Fields
+    dateOfBirth: {
+        type: Date
+    },
+    gender: {
+        type: String,
+        enum: ['male', 'female', 'other', 'prefer-not-to-say']
+    },
+    city: {
+        type: String
+    },
+    state: {
+        type: String
+    },
+    pincode: {
+        type: String
+    },
+    // Wishlist
+    wishlist: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Packages'
+    }],
+    wishlistAddedDates: {
+        type: Map,
+        of: Date,
+        default: {}
     }
 }, 
 { timestamps: true });

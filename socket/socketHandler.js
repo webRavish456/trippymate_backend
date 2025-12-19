@@ -3,8 +3,13 @@ import CommunityMessage from '../models/CommunityMessageModel.js';
 import CommunityTrip from '../models/CommunityTripModel.js';
 import Admin from '../models/AdminModel.js';
 import User from '../models/UserModel.js';
+import Notification from '../models/NotificationModel.js';
+
+// Store io instance globally
+let globalIO = null;
 
 export const setupSocketIO = (io) => {
+  globalIO = io;
   // Authentication middleware for Socket.IO
   io.use(async (socket, next) => {
     try {
@@ -18,7 +23,8 @@ export const setupSocketIO = (io) => {
       const decoded = jwt.verify(token, secretKey);
       
       // Attach user info to socket
-      socket.userId = decoded.id || decoded._id;
+      // User tokens have 'userId', admin tokens have 'id' or '_id'
+      socket.userId = decoded.userId || decoded.id || decoded._id;
       socket.userRole = decoded.role || 'user';
       
       next();
@@ -28,7 +34,7 @@ export const setupSocketIO = (io) => {
   });
 
   io.on('connection', (socket) => {
-    console.log(`User connected: ${socket.userId}`);
+    console.log(`User connected: ${socket.userId}, Role: ${socket.userRole}`);
 
     // Join a trip room
     socket.on('join-trip', async (tripId) => {
@@ -73,11 +79,18 @@ export const setupSocketIO = (io) => {
           return;
         }
 
+        // Check if trip is approved (for user-created trips)
+        if (trip.approvalStatus && trip.approvalStatus !== 'approved') {
+          socket.emit('error', { message: 'This trip is not approved yet' });
+          return;
+        }
+
         // Get user info
         let userName = 'Admin';
         let userImage = null;
         let userId = null;
         let adminId = null;
+        let user = null; // Store user object for notifications
 
         if (socket.userRole === 'admin') {
           const admin = await Admin.findById(socket.userId);
@@ -86,26 +99,54 @@ export const setupSocketIO = (io) => {
             adminId = admin._id;
           }
         } else {
-          const user = await User.findById(socket.userId);
-          if (user) {
-            userName = user.name || 'User';
-            userImage = user.profileImage;
-            userId = user._id;
+          if (!socket.userId) {
+            console.error('socket.userId is missing for user message');
+            socket.emit('error', { message: 'User authentication failed' });
+            return;
+          }
+          
+          user = await User.findById(socket.userId);
+          if (!user) {
+            console.error(`User not found in database: ${socket.userId}`);
+            socket.emit('error', { message: 'User not found' });
+            return;
+          }
+          userName = user.name || user.email || 'User';
+          userImage = user.profileImage;
+          userId = user._id;
+
+          // Check if user is an approved member (for non-admin users)
+          const isMember = trip.members.some(m => {
+            const memberUserId = m.userId?.toString() || m.userId;
+            return memberUserId === socket.userId?.toString() && m.status === 'approved';
+          });
+          
+          // Also check if user is the organizer
+          const isOrganizer = trip.organizerId?.toString() === socket.userId?.toString();
+          
+          if (!isMember && !isOrganizer) {
+            socket.emit('error', { message: 'You must be an approved member to send messages' });
+            return;
           }
         }
 
         // Create message
         const messageData = {
           tripId,
-          userId: userId || null,
           userName,
-          userImage,
+          userImage: userImage || null,
           message,
           messageType: messageType || 'general',
           parentMessageId: parentMessageId || null,
           isAdminReply: socket.userRole === 'admin',
-          adminId: adminId || null
         };
+
+        // Set userId or adminId based on role
+        if (socket.userRole === 'admin') {
+          messageData.adminId = adminId;
+        } else {
+          messageData.userId = userId;
+        }
 
         const newMessage = await CommunityMessage.create(messageData);
 
@@ -121,10 +162,56 @@ export const setupSocketIO = (io) => {
         // Emit to all users in the trip room
         io.to(`trip:${tripId}`).emit('new-message', newMessage);
 
+        // If message is from a user (not admin), create notification for admins
+        if (socket.userRole !== 'admin' && userId) {
+          try {
+            const admins = await Admin.find({});
+            for (const admin of admins) {
+              const notification = await Notification.create({
+                adminId: admin._id,
+                type: 'community_trip_message',
+                title: 'New Message in Community Trip',
+                message: `${userName} sent a message in "${trip.title}"`,
+                tripId: trip._id,
+                requestUserId: userId,
+                isRead: false
+              });
+
+              // Emit notification to admin
+              io.to(`admin:${admin._id.toString()}`).emit('admin-notification', {
+                _id: notification._id,
+                type: 'community_trip_message',
+                title: 'New Message in Community Trip',
+                message: `${userName} sent a message in "${trip.title}"`,
+                tripId: {
+                  _id: trip._id,
+                  title: trip.title,
+                  location: trip.location
+                },
+                requestUserId: {
+                  _id: userId,
+                  name: userName,
+                  email: user?.email || '',
+                  profileImage: userImage
+                },
+                isRead: false,
+                isFavorite: false,
+                createdAt: notification.createdAt
+              });
+            }
+          } catch (notifError) {
+            console.error('Error creating message notification:', notifError);
+            // Don't fail message sending if notification fails
+          }
+        }
+
         console.log(`Message sent in trip ${tripId} by ${userName}`);
       } catch (error) {
         console.error('Error sending message:', error);
-        socket.emit('error', { message: 'Error sending message' });
+        socket.emit('error', { 
+          message: error.message || 'Error sending message',
+          error: error.toString()
+        });
       }
     });
 
@@ -185,10 +272,115 @@ export const setupSocketIO = (io) => {
       }
     });
 
+    // Handle community trip join request
+    socket.on('request-join-trip', async (data) => {
+      try {
+        const { tripId } = data;
+
+        if (!tripId) {
+          socket.emit('error', { message: 'Trip ID is required' });
+          return;
+        }
+
+        const userId = socket.userId;
+        const trip = await CommunityTrip.findById(tripId).populate('organizerId');
+
+        if (!trip) {
+          socket.emit('error', { message: 'Trip not found' });
+          return;
+        }
+
+        // Check if user is already a member
+        const existingMember = trip.members.find(m => m.userId.toString() === userId);
+        if (existingMember) {
+          socket.emit('error', { message: 'You are already a member of this trip' });
+          return;
+        }
+
+        // Check if trip is full
+        const approvedMembers = trip.members.filter(m => m.status === 'approved').length;
+        if (approvedMembers >= trip.maxMembers) {
+          socket.emit('error', { message: 'Trip is full' });
+          return;
+        }
+
+        // Get user info
+        const user = await User.findById(userId);
+        if (!user) {
+          socket.emit('error', { message: 'User not found' });
+          return;
+        }
+
+        // Add member with pending status
+        trip.members.push({
+          userId,
+          joinedAt: new Date(),
+          status: 'pending'
+        });
+
+        await trip.save();
+
+        // Create notification for all admins
+        const admins = await Admin.find({});
+        const notifications = [];
+
+        for (const admin of admins) {
+          const notification = await Notification.create({
+            adminId: admin._id,
+            type: 'community_trip_join_request',
+            title: 'New Join Request',
+            message: `${user.name || user.email} wants to join "${trip.title}"`,
+            tripId: trip._id,
+            requestUserId: userId,
+            isRead: false
+          });
+
+          notifications.push(notification);
+
+          // Emit notification to admin if they're connected
+          io.to(`admin:${admin._id}`).emit('admin-notification', {
+            _id: notification._id,
+            type: 'community_trip_join_request',
+            title: 'New Join Request',
+            message: `${user.name || user.email} wants to join "${trip.title}"`,
+            tripId: trip._id,
+            requestUserId: userId,
+            userName: user.name || user.email,
+            userEmail: user.email,
+            userImage: user.profileImage,
+            tripTitle: trip.title,
+            tripLocation: trip.location,
+            createdAt: notification.createdAt
+          });
+        }
+
+        socket.emit('join-request-submitted', {
+          message: 'Join request submitted successfully. Waiting for admin approval.',
+          tripId: trip._id
+        });
+
+        console.log(`Join request created for trip ${tripId} by user ${userId}`);
+      } catch (error) {
+        console.error('Error handling join request:', error);
+        socket.emit('error', { message: 'Error submitting join request' });
+      }
+    });
+
+    // Admin joins admin room
+    socket.on('join-admin-room', () => {
+      if (socket.userRole === 'admin') {
+        socket.join(`admin:${socket.userId}`);
+        console.log(`Admin ${socket.userId} joined admin room`);
+      }
+    });
+
     // Handle disconnection
     socket.on('disconnect', () => {
       console.log(`User disconnected: ${socket.userId}`);
     });
   });
 };
+
+// Export function to get io instance
+export const getIO = () => globalIO;
 

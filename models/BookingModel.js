@@ -82,6 +82,29 @@ const BookingSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "ExploreDestination",
       default: null
+    },
+    feedback: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Feedback",
+      default: null
+    },
+    contactName: {
+      type: String
+    },
+    contactPhone: {
+      type: String
+    },
+    contactAddress: {
+      type: String
+    },
+    totalAmount: {
+      type: Number,
+      default: 0
+    },
+    bookingId: {
+      type: String,
+      unique: true,
+      sparse: true
     }
   },
   { timestamps: true }

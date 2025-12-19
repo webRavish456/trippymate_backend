@@ -29,6 +29,7 @@ const upload = multer({
 }).fields([
   { name: 'image', maxCount: 1 },
   { name: 'images', maxCount: 5 }, // Multiple images for review
+  { name: 'photos', maxCount: 10 }, // Photos for feedback
 ]);
 
 const uploadReview = (req, res, next) => {
@@ -52,6 +53,17 @@ const uploadReview = (req, res, next) => {
     // Process multiple images
     if (files?.['images']) {
       imageUrls.images = files['images'].map(file => file.path);
+    }
+
+    // Process photos for feedback
+    if (files?.['photos']) {
+      imageUrls.photos = files['photos'].map(file => ({
+        filename: file.filename,
+        path: file.path,
+        publicId: file.publicId,
+        mimetype: file.mimetype,
+        size: file.size
+      }));
     }
 
     if (Object.keys(imageUrls).length > 0) {

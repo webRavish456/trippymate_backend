@@ -17,7 +17,7 @@ const PackageSchema = new mongoose.Schema({
   destinations: [{
     destinationId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Destination",
+      ref: "ExploreDestination",
     },
     destinationName: String,
     destinationType: String, // "popular", "season", "category", "region", "adventure", "culture"

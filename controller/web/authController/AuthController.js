@@ -437,14 +437,17 @@ export const googleAuth = async (req, res) => {
       if (!user.googleId) {
         user.googleId = googleId;
         user.isGoogleUser = true;
-        if (profilePicture) user.profilePicture = profilePicture;
-        await user.save();
       }
+      // Always update name and profilePicture from Google (in case user changed them on Google)
+      if (name) user.name = name;
+      if (profilePicture) user.profilePicture = profilePicture;
+      user.emailVerified = true; // Google emails are verified
+      await user.save();
     } else {
       // Create new user
       user = await User.create({
         name,
-        email,
+        email: email.toLowerCase().trim(),
         googleId,
         isGoogleUser: true,
         profilePicture: profilePicture || "",

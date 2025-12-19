@@ -90,7 +90,9 @@ import {
   getSimilarSlots,
 } from '../controller/admin/slotController/SlotMatchingController.js';
 import { AddUser, deleteVendor, updateVendor, showVendors, updateVendorStatus, setVendor, changeDefaultPassword } from '../controller/admin/vendorController/VendorController.js';
-import { createCommunityTrip, getAllCommunityTrips, getCommunityTripById, updateCommunityTrip, deleteCommunityTrip, joinCommunityTrip } from '../controller/admin/communityController/CommunityTripController.js';
+import { createCommunityTrip, getAllCommunityTrips, getCommunityTripById, updateCommunityTrip, deleteCommunityTrip, joinCommunityTrip, approveCommunityTrip, rejectCommunityTrip } from '../controller/admin/communityController/CommunityTripController.js';
+import { submitRating, getUserRating, getTripRatings } from '../controller/admin/communityController/CommunityRatingController.js';
+import { getAdminNotifications, markNotificationAsRead, markAllNotificationsAsRead, approveJoinRequest, rejectJoinRequest, toggleFavorite } from '../controller/admin/notificationController/NotificationController.js';
 import {
   AddPayment as AddVendorPayment,
   GetAllPayments as GetAllVendorPayments,
@@ -168,6 +170,9 @@ import {
 import { sentOtp, verifyOtp } from '../controller/web/otp.js';
 import { AddUser as AddWebUser } from '../controller/web/UserController.js';
 import { addBooking } from '../controller/web/BookingController.js';
+import { getUserProfile, updateUserProfile, getUserBookings, getBookingDetails } from '../controller/web/UserProfileController.js';
+import { getUserWishlist, addToWishlist, removeFromWishlist } from '../controller/web/WishlistController.js';
+import { submitFeedback, getFeedbackByBooking } from '../controller/web/FeedbackController.js';
 import { createPaymentOrder, verifyPayment } from '../controller/web/PaymentController.js';
 import {
   getAllBlogs as getWebBlogs,
@@ -196,10 +201,10 @@ import {
   declineSlotJoinRequest,
   getPendingJoinRequests,
   getUserNotifications,
-  markNotificationAsRead,
-  markAllNotificationsAsRead,
+  markNotificationAsRead as markUserNotificationAsRead,
+  markAllNotificationsAsRead as markAllUserNotificationsAsRead,
 } from '../controller/web/SlotController.js';
-import { ShowPackages as ShowUserPackages, GetPackageById as GetUserPackageById } from '../controller/web/packageController/PackageController.js';
+import { ShowPackages as ShowUserPackages, GetPackageById as GetUserPackageById, GetPopularDestinations as GetUserPopularDestinations } from '../controller/web/packageController/PackageController.js';
 import {
   GetAllActiveCaptains,
   GetCaptainByIdPublic,
@@ -437,10 +442,28 @@ router.route('/auth/me').get(verifyToken, getCurrentUser);
 router.route('/user/AddUser').post(AddWebUser);
 
 // ============================================
+// USER PROFILE ROUTES
+// ============================================
+router.route('/user/profile').get(verifyToken, getUserProfile);
+router.route('/user/profile').put(verifyToken, updateUserProfile);
+router.route('/user/bookings').get(verifyToken, getUserBookings);
+router.route('/user/booking/:id').get(verifyToken, getBookingDetails);
+router.route('/user/wishlist').get(verifyToken, getUserWishlist);
+router.route('/user/wishlist/add').post(verifyToken, addToWishlist);
+router.route('/user/wishlist/remove/:packageId').delete(verifyToken, removeFromWishlist);
+
+// ============================================
+// USER FEEDBACK ROUTES
+// ============================================
+router.route('/user/booking/:bookingId/feedback').post(verifyToken, uploadReview, submitFeedback);
+router.route('/user/booking/:bookingId/feedback').get(verifyToken, getFeedbackByBooking);
+
+// ============================================
 // USER PACKAGE ROUTES
 // ============================================
 router.route('/user/getPackages').get(ShowUserPackages);
 router.route('/user/getPackagebyId').post(GetUserPackageById);
+router.route('/user/popular-destinations').get(GetUserPopularDestinations);
 
 // ============================================
 // USER CAPTAIN ROUTES (Public - Frontend)
@@ -492,8 +515,8 @@ router.route('/user/slot/pending-requests/:userId').get(verifyToken, getPendingJ
 // NOTIFICATION ROUTES
 // ============================================
 router.route('/user/notifications/:userId').get(verifyToken, getUserNotifications);
-router.route('/user/notifications/:notificationId/read').put(verifyToken, markNotificationAsRead);
-router.route('/user/notifications/:userId/read-all').put(verifyToken, markAllNotificationsAsRead);
+router.route('/user/notifications/:notificationId/read').put(verifyToken, markUserNotificationAsRead);
+router.route('/user/notifications/:userId/read-all').put(verifyToken, markAllUserNotificationsAsRead);
 
 // ============================================
 // VENDOR BUSINESS ROUTES (with file uploads)
@@ -510,6 +533,8 @@ router.route('/admin/community-trip/:tripId').get(verifyToken, getCommunityTripB
 router.route('/admin/community-trip/update/:tripId').put(verifyToken, uploadCommunity, updateCommunityTrip);
 router.route('/admin/community-trip/delete/:tripId').delete(verifyToken, deleteCommunityTrip);
 router.route('/admin/community-trip/:tripId/join').post(verifyToken, joinCommunityTrip);
+router.route('/admin/community-trip/:tripId/approve').post(verifyToken, approveCommunityTrip);
+router.route('/admin/community-trip/:tripId/reject').post(verifyToken, rejectCommunityTrip);
 router.route('/admin/community-trip/:tripId/messages').get(verifyToken, getTripMessages);
 router.route('/admin/community-message/create').post(verifyToken, createMessage);
 router.route('/admin/community-message/:messageId').put(verifyToken, updateMessage);
@@ -523,7 +548,20 @@ router.route('/user/community-trip/all').get(getAllCommunityTrips);
 router.route('/user/community-trip/:tripId').get(getCommunityTripById);
 router.route('/user/community-trip/:tripId/join').post(verifyToken, joinCommunityTrip);
 router.route('/user/community-trip/:tripId/messages').get(verifyToken, getTripMessages);
+router.route('/user/community-trip/:tripId/rating').post(verifyToken, submitRating);
+router.route('/user/community-trip/:tripId/rating').get(verifyToken, getUserRating);
+router.route('/admin/community-trip/:tripId/ratings').get(verifyToken, getTripRatings);
 router.route('/user/community-message/create').post(verifyToken, createMessage);
+
+// ============================================
+// ADMIN NOTIFICATION ROUTES
+// ============================================
+router.route('/admin/notifications').get(verifyToken, getAdminNotifications);
+router.route('/admin/notifications/:notificationId/read').put(verifyToken, markNotificationAsRead);
+router.route('/admin/notifications/read-all').put(verifyToken, markAllNotificationsAsRead);
+router.route('/admin/notifications/:notificationId/approve').post(verifyToken, approveJoinRequest);
+router.route('/admin/notifications/:notificationId/reject').post(verifyToken, rejectJoinRequest);
+router.route('/admin/notifications/:notificationId/favorite').put(verifyToken, toggleFavorite);
 
 // ============================================
 // USER BLOG ROUTES (Frontend)

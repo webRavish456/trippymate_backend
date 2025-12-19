@@ -104,6 +104,13 @@ const CommunityTripSchema = new mongoose.Schema({
         default: 'upcoming'
     },
     
+    // Approval Status (for user-created trips)
+    approvalStatus: {
+        type: String,
+        enum: ['pending', 'approved', 'rejected'],
+        default: 'approved' // Admin-created trips are auto-approved
+    },
+    
     // Additional Details
     itinerary: [{
         day: Number,
@@ -117,6 +124,18 @@ const CommunityTripSchema = new mongoose.Schema({
     
     // Q&A/Messages
     messageCount: {
+        type: Number,
+        default: 0
+    },
+    
+    // Community Rating (average of all user ratings)
+    averageRating: {
+        type: Number,
+        default: 0,
+        min: 0,
+        max: 5
+    },
+    totalRatings: {
         type: Number,
         default: 0
     }
