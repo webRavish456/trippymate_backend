@@ -2,7 +2,7 @@ import Packages from "../../../models/PackageModel.js";
 
 const ShowPackages = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search, destination, destinationId, category, packageType, feature } = req.query;
+    const { page = 1, limit = 10, search, destination, destinationId, category, packageType, feature, isPopular } = req.query;
 
     // Build filter object
     let filter = { status: "active" }; // Only show active packages
@@ -40,6 +40,11 @@ const ShowPackages = async (req, res) => {
       filter.features = { $in: [feature] };
     }
 
+    // Filter by isPopular
+    if (isPopular === 'true' || isPopular === true) {
+      filter.isPopular = true;
+    }
+
     // Pagination
     const skip = (Number(page) - 1) * Number(limit);
 
@@ -53,15 +58,16 @@ const ShowPackages = async (req, res) => {
     const totalPackages = await Packages.countDocuments(filter);
     const totalPages = Math.ceil(totalPackages / Number(limit));
 
-    // Get package count by category/type
+    // Get package count by category
     const packageCounts = await Packages.aggregate([
-      { $match: { status: "active" } },
+      { $match: { status: "active", category: { $exists: true, $ne: null, $ne: "" } } },
       {
         $group: {
-          _id: "$packageType",
+          _id: "$category",
           count: { $sum: 1 }
         }
-      }
+      },
+      { $sort: { count: -1 } }
     ]);
 
     return res.status(200).json({
@@ -163,7 +169,7 @@ const GetPopularDestinations = async (req, res) => {
                   if: { $ne: ["$$firstImg", null] },
                   then: {
                     $cond: {
-                      if: { $type: ["$$firstImg", "string"] },
+                      if: { $eq: [{ $type: "$$firstImg" }, "string"] },
                       then: "$$firstImg",
                       else: {
                         $cond: {

@@ -4,7 +4,7 @@ import Booking from "../../models/BookingModel.js";
 import Packages from "../../models/PackageModel.js";
 import Coupon from "../../models/CouponModel.js";
 import PromoCode from "../../models/PromoCodeModel.js";
-import User from "../../models/UserModel.js";
+import Customer from "../../models/CustomerModel.js";
 import Slot from "../../models/SlotModel.js";
 import Captain from "../../models/CaptainModel.js";
 import moment from "moment-timezone";
@@ -67,7 +67,8 @@ const calculateDiscount = async (baseAmount, couponCode, promoCode, userId) => {
             paymentStatus: 'completed'
           });
 
-          if (userBookings.length < coupon.userLimit) {
+          // Check userLimit only if it's not null (null = unlimited)
+          if (coupon.userLimit === null || coupon.userLimit === 0 || userBookings.length < coupon.userLimit) {
             if (coupon.discountType === 'percentage') {
               discountAmount = (baseAmount * coupon.discountValue) / 100;
               if (coupon.maxDiscountAmount && discountAmount > coupon.maxDiscountAmount) {
@@ -104,7 +105,8 @@ const calculateDiscount = async (baseAmount, couponCode, promoCode, userId) => {
             paymentStatus: 'completed'
           });
 
-          if (userBookings.length < promo.userLimit) {
+          // Check userLimit only if it's not null (null = unlimited)
+          if (promo.userLimit === null || promo.userLimit === 0 || userBookings.length < promo.userLimit) {
             if (promo.discountType === 'percentage') {
               const promoDiscount = (baseAmount * promo.discountValue) / 100;
               if (promo.maxDiscountAmount && promoDiscount > promo.maxDiscountAmount) {

@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { createAdmin } from "../seedData/createAdmin.js";
+import { seedRoles } from "../seedData/createRoles.js";
 
 // mongodb+srv://teamdeveloper1993_db_user:<db_password>@trippymates.autuq8t.mongodb.net/trippymates?appName=Trippymates
 
@@ -11,6 +12,7 @@ export const connectDB = async () => {
     await mongoose.connect(connection_string, {
       family: 4,
     }).then(async ()=>{ 
+      await seedRoles();
       await createAdmin();
       console.log('Connection successfull')}
     );

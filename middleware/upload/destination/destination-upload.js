@@ -19,6 +19,8 @@ const storage = new CloudinaryStorage({
     
     if (file.fieldname === 'images') {
       folder = 'destinations';
+    } else if (file.fieldname === 'placeImages') {
+      folder = 'destinations/places';
     } else if (file.fieldname === 'attractionImages') {
       folder = 'destinations/attractions';
     } else if (file.fieldname === 'hotelImages') {
@@ -46,7 +48,9 @@ const upload = multer({
   storage: storage,
   limits: { fileSize: 10 * 1024 * 1024 },
 }).fields([
+  { name: 'image', maxCount: 1 },
   { name: 'images', maxCount: 10 },
+  { name: 'placeImages', maxCount: 50 },
   { name: 'attractionImages', maxCount: 20 },
   { name: 'hotelImages', maxCount: 20 },
   { name: 'foodImages', maxCount: 20 },
@@ -70,13 +74,31 @@ const uploadDestination = (req, res, next) => {
 
 
 
-    // Process main images (multiple)
+    // Process single main image
+    if (files?.['image']) {
+      imageUrls.image = files['image'][0].path;
+      if (!imageUrls.images) {
+        imageUrls.images = [];
+      }
+      imageUrls.images.push(files['image'][0].path);
+    }
+
+    // Process main images (multiple) - only for main category images, not placeDetails images
     if (files?.['images']) {
-      imageUrls.images = files['images'].map(file => file.path);
-      // Also set single image for backward compatibility
-      if (files['images'].length > 0) {
+      if (!imageUrls.images) {
+        imageUrls.images = [];
+      }
+      // Add to images array (but don't overwrite single image if already set)
+      imageUrls.images.push(...files['images'].map(file => file.path));
+      // Set single image if not already set
+      if (!imageUrls.image && files['images'].length > 0) {
         imageUrls.image = files['images'][0].path;
       }
+    }
+
+    // Process placeDetails images (separate from main category images)
+    if (files?.['placeImages']) {
+      imageUrls.placeImages = files['placeImages'].map(file => file.path);
     }
 
     // Process attraction images

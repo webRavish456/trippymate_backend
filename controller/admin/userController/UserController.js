@@ -1,5 +1,5 @@
 import moment from "moment-timezone";
-import User from "../../../models/UserModel.js";
+import Customer from "../../../models/CustomerModel.js";
 import Booking from "../../../models/BookingModel.js";
 
 // =======================
@@ -8,7 +8,7 @@ import Booking from "../../../models/BookingModel.js";
 const getUser = async (req, res) => {
   try {
     // 1️⃣ Fetch all users and their bookings (with packages)
-    const users = await User.find();
+    const users = await Customer.find();
     const bookings = await Booking.find({})
       .populate("packageId")
       .populate("userId");
@@ -106,7 +106,7 @@ const updateUserStatus = async (req, res) => {
   const { status } = req.body;
 
   try {
-    const userDetail = await User.findByIdAndUpdate(id, { status }, { new: true });
+    const userDetail = await Customer.findByIdAndUpdate(id, { status }, { new: true });
     if (!userDetail)
       return res.status(404).json({ status: false, message: "User not found" });
 

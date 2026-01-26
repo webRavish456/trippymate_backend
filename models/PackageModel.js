@@ -38,8 +38,17 @@ const PackageSchema = new mongoose.Schema({
   },
   category: {
     type: String,
-    enum: ["Adventure", "Family", "Honeymoon", "Holiday", "Cultural", "Religious", "Wildlife", "Beach", "Hill Station", "Other"],
-    default: "Other"
+    enum: ["adventure", "family", "honeymoon", "holiday", "cultural", "religious", "wildlife", "beach", "hill-station", "weekend", "other"],
+    default: "other"
+  },
+  state: {
+    type: String, // For state-wise packages: "jammu-kashmir", "goa", "kerala", etc.
+    default: ""
+  },
+  region: {
+    type: String, // "north", "south", "east", "west"
+    enum: ["north", "south", "east", "west", ""],
+    default: ""
   },
   packageType: {
     type: String, // e.g., "Honeymoon Packages", "Adventure Packages", "Family Packages"
@@ -112,6 +121,10 @@ const PackageSchema = new mongoose.Schema({
     enum: ["draft", "active", "inactive"],
     default: "active"
   },
+  isPopular: {
+    type: Boolean,
+    default: false
+  },
   createdAt: {
     type: Date,
     default: Date.now,
@@ -121,7 +134,7 @@ const PackageSchema = new mongoose.Schema({
     default: Date.now,
   }
 }, {
-  timestamps: true // Automatically handle createdAt and updatedAt
+  timestamps: true 
 });
 
 const Packages = mongoose.model("Packages", PackageSchema);

@@ -4,7 +4,7 @@ const NotificationSchema = new mongoose.Schema(
   {
     userId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: "Customer",
       required: false,
     },
     adminId: {
@@ -47,7 +47,7 @@ const NotificationSchema = new mongoose.Schema(
     },
     requestUserId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: "Customer",
       default: null,
     },
     isRead: {

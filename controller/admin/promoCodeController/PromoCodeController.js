@@ -1,4 +1,5 @@
 import PromoCode from "../../../models/PromoCodeModel.js";
+import Booking from "../../../models/BookingModel.js";
 
 // Add Promo Code
 export const AddPromoCode = async (req, res) => {
@@ -14,6 +15,7 @@ export const AddPromoCode = async (req, res) => {
       validFrom,
       validUntil,
       userLimit,
+      oneTimeUser,
       status
     } = req.body;
 
@@ -34,6 +36,15 @@ export const AddPromoCode = async (req, res) => {
       });
     }
 
+    // Handle oneTimeUser boolean or userLimit number
+    let finalUserLimit = 1;
+    if (oneTimeUser !== undefined) {
+      // true = 1 (one time only), false = null (unlimited)
+      finalUserLimit = oneTimeUser === true ? 1 : null;
+    } else if (userLimit !== undefined) {
+      finalUserLimit = userLimit;
+    }
+
     const newPromoCode = new PromoCode({
       code: code.toUpperCase(),
       title,
@@ -44,7 +55,7 @@ export const AddPromoCode = async (req, res) => {
       maxDiscountAmount: maxDiscountAmount || null,
       validFrom: new Date(validFrom),
       validUntil: new Date(validUntil),
-      userLimit: userLimit || 1,
+      userLimit: finalUserLimit,
       status: status || 'active',
       createdBy: req.user?.id || req.user?._id || null
     });
@@ -160,6 +171,13 @@ export const UpdatePromoCode = async (req, res) => {
       updateData.code = updateData.code.toUpperCase();
     }
 
+    // Handle oneTimeUser boolean conversion
+    if (updateData.oneTimeUser !== undefined) {
+      // true = 1 (one time only), false = null (unlimited)
+      updateData.userLimit = updateData.oneTimeUser === true ? 1 : null;
+      delete updateData.oneTimeUser;
+    }
+
     // Convert date strings to Date objects
     if (updateData.validFrom) {
       updateData.validFrom = new Date(updateData.validFrom);
@@ -266,8 +284,8 @@ export const VerifyPromoCode = async (req, res) => {
       });
     }
 
-    // Check user limit
-    if (userId && promoCode.userLimit) {
+    // Check user limit (skip if userLimit is null = unlimited)
+    if (userId && promoCode.userLimit !== null && promoCode.userLimit > 0) {
       const Booking = (await import("../../../models/BookingModel.js")).default;
       const userBookings = await Booking.countDocuments({
         promoCode: promoCode._id,
@@ -312,6 +330,140 @@ export const VerifyPromoCode = async (req, res) => {
     return res.status(500).json({
       status: false,
       message: "Error verifying promo code",
+      error: error.message
+    });
+  }
+};
+
+// Get Customer-Promo Usage Analytics
+export const GetCustomerPromoUsage = async (req, res) => {
+  try {
+    const bookings = await Booking.find({ promoCode: { $exists: true, $ne: null } })
+      .populate('userId', 'name email phone')
+      .populate('promoCode', 'code title')
+      .populate('packageId', 'name title')
+      .sort({ createdAt: -1 });
+
+    // Group by customer and promo
+    const customerPromoMap = new Map();
+    
+    bookings.forEach(booking => {
+      if (booking.userId && booking.promoCode) {
+        const key = `${booking.userId._id}-${booking.promoCode._id}`;
+        if (!customerPromoMap.has(key)) {
+          customerPromoMap.set(key, {
+            customerId: booking.userId._id,
+            customerName: booking.userId.name || booking.userId.email || 'Unknown',
+            customerEmail: booking.userId.email || 'N/A',
+            promoCode: booking.promoCode.code,
+            promoTitle: booking.promoCode.title || 'N/A',
+            usageCount: 0
+          });
+        }
+        customerPromoMap.get(key).usageCount++;
+      }
+    });
+
+    const data = Array.from(customerPromoMap.values());
+
+    return res.status(200).json({
+      status: true,
+      message: "Customer-Promo usage data fetched successfully",
+      data: data
+    });
+  } catch (error) {
+    console.error("GetCustomerPromoUsage error:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Error fetching customer-promo usage data",
+      error: error.message
+    });
+  }
+};
+
+// Get Promo-Package Usage Analytics
+export const GetPromoPackageUsage = async (req, res) => {
+  try {
+    const bookings = await Booking.find({ promoCode: { $exists: true, $ne: null } })
+      .populate('promoCode', 'code title')
+      .populate('packageId', 'name title')
+      .sort({ createdAt: -1 });
+
+    // Group by promo and package
+    const promoPackageMap = new Map();
+    
+    bookings.forEach(booking => {
+      if (booking.promoCode && booking.packageId) {
+        const key = `${booking.promoCode._id}-${booking.packageId._id}`;
+        if (!promoPackageMap.has(key)) {
+          promoPackageMap.set(key, {
+            promoCode: booking.promoCode.code,
+            promoTitle: booking.promoCode.title || 'N/A',
+            packageId: booking.packageId._id,
+            packageName: booking.packageId.name || booking.packageId.title || 'N/A',
+            usageCount: 0
+          });
+        }
+        promoPackageMap.get(key).usageCount++;
+      }
+    });
+
+    const data = Array.from(promoPackageMap.values());
+
+    return res.status(200).json({
+      status: true,
+      message: "Promo-Package usage data fetched successfully",
+      data: data
+    });
+  } catch (error) {
+    console.error("GetPromoPackageUsage error:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Error fetching promo-package usage data",
+      error: error.message
+    });
+  }
+};
+
+// Get Package-Promo Usage Analytics
+export const GetPackagePromoUsage = async (req, res) => {
+  try {
+    const bookings = await Booking.find({ promoCode: { $exists: true, $ne: null } })
+      .populate('packageId', 'name title')
+      .populate('promoCode', 'code title')
+      .sort({ createdAt: -1 });
+
+    // Group by package and promo
+    const packagePromoMap = new Map();
+    
+    bookings.forEach(booking => {
+      if (booking.packageId && booking.promoCode) {
+        const key = `${booking.packageId._id}-${booking.promoCode._id}`;
+        if (!packagePromoMap.has(key)) {
+          packagePromoMap.set(key, {
+            packageId: booking.packageId._id,
+            packageName: booking.packageId.name || booking.packageId.title || 'N/A',
+            promoCode: booking.promoCode.code,
+            promoTitle: booking.promoCode.title || 'N/A',
+            usageCount: 0
+          });
+        }
+        packagePromoMap.get(key).usageCount++;
+      }
+    });
+
+    const data = Array.from(packagePromoMap.values());
+
+    return res.status(200).json({
+      status: true,
+      message: "Package-Promo usage data fetched successfully",
+      data: data
+    });
+  } catch (error) {
+    console.error("GetPackagePromoUsage error:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Error fetching package-promo usage data",
       error: error.message
     });
   }

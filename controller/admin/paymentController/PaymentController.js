@@ -1,6 +1,6 @@
 import Booking from "../../../models/BookingModel.js";
 import Packages from "../../../models/PackageModel.js";
-import User from "../../../models/UserModel.js";
+import Customer from "../../../models/CustomerModel.js";
 import Coupon from "../../../models/CouponModel.js";
 import PromoCode from "../../../models/PromoCodeModel.js";
 import moment from "moment-timezone";

@@ -284,7 +284,7 @@ const ShowPackages = async (req, res) => {
 
     const skip = (Number(page) - 1) * Number(limit);
 
-    const packages = await Packages.find(filter, "title duration source destination images")
+    const packages = await Packages.find(filter, "title duration source destination images category price status")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(Number(limit));
@@ -344,4 +344,49 @@ const GetPackageById = async (req, res) => {
   }
 };
 
-export { AddPackages, UpdatePackages, DeletePackages, ShowPackages, GetPackageById };
+// GET ALL PACKAGE CATEGORIES
+const GetPackageCategories = async (req, res) => {
+  try {
+    // Get all distinct categories from database
+    const categories = await Packages.distinct("category");
+    
+    // Define category colors mapping
+    const categoryColors = {
+      "adventure": { label: "Adventure", color: "bg-red-100 text-red-700 hover:bg-red-200" },
+      "family": { label: "Family", color: "bg-green-100 text-green-700 hover:bg-green-200" },
+      "honeymoon": { label: "Honeymoon", color: "bg-pink-100 text-pink-700 hover:bg-pink-200" },
+      "holiday": { label: "Holiday", color: "bg-purple-100 text-purple-700 hover:bg-purple-200" },
+      "cultural": { label: "Cultural", color: "bg-orange-100 text-orange-700 hover:bg-orange-200" },
+      "religious": { label: "Religious", color: "bg-yellow-100 text-yellow-700 hover:bg-yellow-200" },
+      "wildlife": { label: "Wildlife", color: "bg-emerald-100 text-emerald-700 hover:bg-emerald-200" },
+      "beach": { label: "Beach", color: "bg-cyan-100 text-cyan-700 hover:bg-cyan-200" },
+      "hill-station": { label: "Hill Station", color: "bg-indigo-100 text-indigo-700 hover:bg-indigo-200" },
+      "weekend": { label: "Weekend Getaways", color: "bg-amber-100 text-amber-700 hover:bg-amber-200" },
+      "other": { label: "Other", color: "bg-gray-100 text-gray-700 hover:bg-gray-200" }
+    };
+
+    // Format categories with labels and colors
+    const formattedCategories = categories
+      .filter(cat => cat && cat !== "") // Remove empty/null values
+      .map(cat => ({
+        id: cat,
+        label: categoryColors[cat]?.label || cat.charAt(0).toUpperCase() + cat.slice(1),
+        color: categoryColors[cat]?.color || "bg-gray-100 text-gray-700 hover:bg-gray-200"
+      }));
+
+    return res.status(200).json({
+      status: true,
+      message: "Categories retrieved successfully",
+      data: formattedCategories,
+    });
+  } catch (err) {
+    console.error("Error fetching categories:", err);
+    return res.status(500).json({
+      status: false,
+      message: "Failed to fetch categories",
+      error: err.message,
+    });
+  }
+};
+
+export { AddPackages, UpdatePackages, DeletePackages, ShowPackages, GetPackageById, GetPackageCategories };

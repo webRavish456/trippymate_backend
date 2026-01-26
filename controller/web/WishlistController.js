@@ -1,4 +1,4 @@
-import User from "../../models/UserModel.js";
+import Customer from "../../models/CustomerModel.js";
 import Packages from "../../models/PackageModel.js";
 
 // Get User Wishlist
@@ -13,7 +13,7 @@ export const getUserWishlist = async (req, res) => {
       });
     }
 
-    const user = await User.findById(userId).select('wishlist');
+    const user = await Customer.findById(userId).select('wishlist');
 
     if (!user) {
       return res.status(404).json({
@@ -92,7 +92,7 @@ export const addToWishlist = async (req, res) => {
       });
     }
 
-    const user = await User.findById(userId);
+    const user = await Customer.findById(userId);
 
     if (!user) {
       return res.status(404).json({
@@ -168,7 +168,7 @@ export const removeFromWishlist = async (req, res) => {
       });
     }
 
-    const user = await User.findById(userId);
+    const user = await Customer.findById(userId);
 
     if (!user) {
       return res.status(404).json({

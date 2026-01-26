@@ -24,11 +24,26 @@ import uploadTrip from '../middleware/upload/trip/trip.js';
 // ============================================
 import { adminRegistration, adminLogin } from '../controller/admin/adminAuthController/AdminController.js';
 import {
+  getRoles,
+  getRoleById,
+  createRole,
+  updateRole,
+  deleteRole,
+  updateRoleStatus
+} from '../controller/admin/roleController/RoleController.js';
+import {
+  createAdminUser,
+  updateAdminUser,
+  getAdminUsers,
+  deleteUser
+} from '../controller/admin/userController/AdminUserController.js';
+import {
   AddPackages,
   DeletePackages,
   UpdatePackages,
   ShowPackages,
-  GetPackageById
+  GetPackageById,
+  GetPackageCategories
 } from '../controller/admin/packageController/PackageController.js';
 import {
   AddDestination,
@@ -42,6 +57,7 @@ import {
   GetRegionDestinations,
   GetAdventureActivities,
   GetCultureHeritageDestinations,
+  GetRegionStates,
 } from '../controller/admin/destinationController/DestinationController.js';
 import {
   addBlog,
@@ -109,7 +125,10 @@ import {
   GetCouponUsageDetails,
   UpdateCoupon,
   DeleteCoupon,
-  VerifyCoupon
+  VerifyCoupon,
+  GetCustomerCouponUsage,
+  GetCouponPackageUsage,
+  GetPackageCouponUsage
 } from '../controller/admin/couponController/CouponController.js';
 import {
   AddPromoCode,
@@ -117,7 +136,10 @@ import {
   GetPromoCodeById,
   UpdatePromoCode,
   DeletePromoCode,
-  VerifyPromoCode
+  VerifyPromoCode,
+  GetCustomerPromoUsage,
+  GetPromoPackageUsage,
+  GetPackagePromoUsage
 } from '../controller/admin/promoCodeController/PromoCodeController.js';
 import {
   AddCommunity,
@@ -220,6 +242,7 @@ import {
   googleAuth,
   getCurrentUser
 } from '../controller/web/authController/AuthController.js';
+import { GetActiveBanners } from '../controller/web/bannerController/BannerController.js';
 
 // ============================================
 // OTP ROUTES
@@ -236,6 +259,24 @@ router.route('/admin/adminRegistration').post(adminRegistration);
 router.route('/admin/adminlogin').post(adminLogin);
 
 // ============================================
+// ADMIN ROLE ROUTES
+// ============================================
+router.route('/admin/roles/getRoles').get(verifyToken, getRoles);
+router.route('/admin/roles/getRole/:id').get(verifyToken, getRoleById);
+router.route('/admin/roles/createRole').post(verifyToken, createRole);
+router.route('/admin/roles/updateRole/:id').put(verifyToken, updateRole);
+router.route('/admin/roles/deleteRole/:id').delete(verifyToken, deleteRole);
+router.route('/admin/roles/updateRoleStatus').post(verifyToken, updateRoleStatus);
+
+// ============================================
+// ADMIN USER ROUTES
+// ============================================
+router.route('/admin/users/create').post(verifyToken, createAdminUser);
+router.route('/admin/users/update/:id').put(verifyToken, updateAdminUser);
+router.route('/admin/users/all').get(verifyToken, getAdminUsers);
+router.route('/admin/users/delete/:id').delete(verifyToken, deleteUser);
+
+// ============================================
 // ADMIN DESTINATION ROUTES
 // ============================================
 router.route('/admin/destination/add').post(uploadDestination, AddDestination);
@@ -244,6 +285,7 @@ router.route('/admin/destination/popular').get(GetPopularDestinations);
 router.route('/admin/destination/season').get(GetSeasonDestinations);
 router.route('/admin/destination/category').get(GetCategoryDestinations);
 router.route('/admin/destination/region').get(GetRegionDestinations);
+router.route('/admin/destination/region/:id/states').get(GetRegionStates);
 router.route('/admin/destination/adventure').get(GetAdventureActivities);
 router.route('/admin/destination/culture').get(GetCultureHeritageDestinations);
 router.route('/admin/destination/:id').get(GetDestinationById);
@@ -258,6 +300,7 @@ router.route('/admin/packages/UpdatePackage/:id').patch(uploadPackage, UpdatePac
 router.route('/admin/packages/DeletePackage/:id').delete(DeletePackages);
 router.route('/admin/packages/showPackage').get(ShowPackages);
 router.route('/admin/packages/packagedetail').post(GetPackageById);
+router.route('/admin/packages/categories').get(GetPackageCategories);
 
 // ============================================
 // ADMIN BLOG ROUTES
@@ -359,6 +402,9 @@ router.route('/admin/coupon/usage/:id').get(verifyToken, GetCouponUsageDetails);
 router.route('/admin/coupon/update/:id').put(verifyToken, UpdateCoupon);
 router.route('/admin/coupon/delete/:id').delete(verifyToken, DeleteCoupon);
 router.route('/admin/coupon/verify').post(VerifyCoupon); // Public route for verification
+router.route('/admin/coupon/management/customer-usage').get(verifyToken, GetCustomerCouponUsage);
+router.route('/admin/coupon/management/coupon-package').get(verifyToken, GetCouponPackageUsage);
+router.route('/admin/coupon/management/package-coupon').get(verifyToken, GetPackageCouponUsage);
 
 // ============================================
 // ADMIN PROMO CODE ROUTES
@@ -369,6 +415,9 @@ router.route('/admin/promo-code/:id').get(verifyToken, GetPromoCodeById);
 router.route('/admin/promo-code/update/:id').put(verifyToken, UpdatePromoCode);
 router.route('/admin/promo-code/delete/:id').delete(verifyToken, DeletePromoCode);
 router.route('/admin/promo-code/verify').post(VerifyPromoCode); // Public route for verification
+router.route('/admin/promo-code/management/customer-usage').get(verifyToken, GetCustomerPromoUsage);
+router.route('/admin/promo-code/management/promo-package').get(verifyToken, GetPromoPackageUsage);
+router.route('/admin/promo-code/management/package-promo').get(verifyToken, GetPackagePromoUsage);
 
 // ============================================
 // ADMIN COMMUNITY ROUTES
@@ -580,6 +629,11 @@ router.route('/user/blog/:id').get(getWebBlogById);
 // ============================================
 router.route('/user/faq/all').get(getWebFAQs);
 router.route('/user/faq/category/:category').get(getFAQsByCategory);
+
+// ============================================
+// USER BANNER ROUTES (Frontend - Public)
+// ============================================
+router.route('/user/banner/active').get(GetActiveBanners);
 
 // ============================================
 // LEGACY ROUTES (keeping for backward compatibility)

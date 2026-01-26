@@ -1,6 +1,6 @@
 import Notification from '../../../models/NotificationModel.js';
 import CommunityTrip from '../../../models/CommunityTripModel.js';
-import User from '../../../models/UserModel.js';
+import Customer from '../../../models/CustomerModel.js';
 import Admin from '../../../models/AdminModel.js';
 import { getIO } from '../../../socket/socketHandler.js';
 import mongoose from 'mongoose';

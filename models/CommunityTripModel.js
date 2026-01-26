@@ -47,7 +47,7 @@ const CommunityTripSchema = new mongoose.Schema({
     // Organizer Details
     organizerId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
+        ref: 'Customer',
         required: false
     },
     organizerName: {

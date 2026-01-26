@@ -156,6 +156,10 @@ const PlaceDetailSchema = new mongoose.Schema({
     type: String,
     required: false,
   },
+  location: {
+    type: String,
+    required: false,
+  },
   description: {
     type: String,
     required: false,
@@ -211,7 +215,8 @@ const ExploreDestinationSchema = new mongoose.Schema({
   color: {
     type: String,
   },
-  places: {
+  places: [PlaceDetailSchema],
+  placesSummary: {
     type: String,
   },
   desc: {

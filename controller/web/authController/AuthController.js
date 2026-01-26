@@ -1,4 +1,4 @@
-import User from "../../../models/UserModel.js";
+import Customer from "../../../models/CustomerModel.js";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import sgMail from "@sendgrid/mail";
@@ -47,8 +47,8 @@ export const signup = async (req, res) => {
 
     // Check if user already exists by email or phone
     const existingUser = email 
-      ? await User.findOne({ email })
-      : await User.findOne({ phone });
+      ? await Customer.findOne({ email })
+      : await Customer.findOne({ phone });
     
     if (existingUser) {
       return res.status(400).json({
@@ -69,7 +69,7 @@ export const signup = async (req, res) => {
     if (email) userData.email = email.toLowerCase().trim();
     if (phone) userData.phone = phone;
 
-    const user = await User.create(userData);
+    const user = await Customer.create(userData);
 
     // Generate token
     const token = generateToken(user._id);
@@ -120,7 +120,7 @@ export const login = async (req, res) => {
       ? { email: email.toLowerCase().trim() }
       : { phone };
     
-    const user = await User.findOne(query).select("+password");
+    const user = await Customer.findOne(query).select("+password");
 
     if (!user) {
       return res.status(401).json({
@@ -198,7 +198,7 @@ export const forgotPassword = async (req, res) => {
       });
     }
 
-    const user = await User.findOne({ email });
+    const user = await Customer.findOne({ email });
 
     if (!user) {
       // Don't reveal if user exists or not for security
@@ -367,7 +367,7 @@ export const setPassword = async (req, res) => {
       ? { email: contact.toLowerCase().trim() }
       : { phone: contact };
 
-    let user = await User.findOne(userQuery);
+    let user = await Customer.findOne(userQuery);
 
     if (!user) {
       // Create new user if doesn't exist
@@ -383,7 +383,7 @@ export const setPassword = async (req, res) => {
         userData.phone = contact;
       }
 
-      user = await User.create(userData);
+      user = await Customer.create(userData);
     } else {
       // Check if user already has a password set
       if (user.password) {
@@ -490,7 +490,7 @@ export const googleAuth = async (req, res) => {
 // Get Current User
 export const getCurrentUser = async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId);
+    const user = await Customer.findById(req.user.userId);
 
     if (!user) {
       return res.status(404).json({

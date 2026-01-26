@@ -1,7 +1,7 @@
 import Slot from "../../../models/SlotModel.js";
 import Booking from "../../../models/BookingModel.js";
 import Packages from "../../../models/PackageModel.js";
-import User from "../../../models/UserModel.js";
+import Customer from "../../../models/CustomerModel.js";
 import moment from "moment-timezone";
 
 // Get Active Trips with Slot Details

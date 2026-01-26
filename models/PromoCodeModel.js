@@ -48,7 +48,7 @@ const PromoCodeSchema = new mongoose.Schema({
   },
   userLimit: {
     type: Number,
-    default: 1 // How many times a single user can use
+    default: 1 // 1 = one time use per user, null = unlimited
   },
   status: {
     type: String,

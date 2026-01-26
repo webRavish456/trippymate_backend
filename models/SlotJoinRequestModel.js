@@ -9,7 +9,7 @@ const SlotJoinRequestSchema = new mongoose.Schema(
     },
     requestedBy: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: "Customer",
       required: true,
     },
     bookingId: {
@@ -36,7 +36,7 @@ const SlotJoinRequestSchema = new mongoose.Schema(
     },
     slotCreatorId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: "Customer",
       required: true,
     },
     message: {

@@ -15,6 +15,7 @@ export const AddCoupon = async (req, res) => {
       validFrom,
       validUntil,
       userLimit,
+      oneTimeUser,
       status
     } = req.body;
 
@@ -35,6 +36,15 @@ export const AddCoupon = async (req, res) => {
       });
     }
 
+    // Handle oneTimeUser boolean or userLimit number
+    let finalUserLimit = 1;
+    if (oneTimeUser !== undefined) {
+      // true = 1 (one time only), false = null (unlimited)
+      finalUserLimit = oneTimeUser === true ? 1 : null;
+    } else if (userLimit !== undefined) {
+      finalUserLimit = userLimit;
+    }
+
     const newCoupon = new Coupon({
       code: code.toUpperCase(),
       title,
@@ -45,7 +55,7 @@ export const AddCoupon = async (req, res) => {
       maxDiscountAmount: maxDiscountAmount || null,
       validFrom: new Date(validFrom),
       validUntil: new Date(validUntil),
-      userLimit: userLimit || 1,
+      userLimit: finalUserLimit,
       status: status || 'active',
       createdBy: req.user?.id || req.user?._id || null
     });
@@ -244,6 +254,13 @@ export const UpdateCoupon = async (req, res) => {
       updateData.code = updateData.code.toUpperCase();
     }
 
+    // Handle oneTimeUser boolean conversion
+    if (updateData.oneTimeUser !== undefined) {
+      // true = 1 (one time only), false = null (unlimited)
+      updateData.userLimit = updateData.oneTimeUser === true ? 1 : null;
+      delete updateData.oneTimeUser;
+    }
+
     // Convert date strings to Date objects
     if (updateData.validFrom) {
       updateData.validFrom = new Date(updateData.validFrom);
@@ -309,6 +326,140 @@ export const DeleteCoupon = async (req, res) => {
   }
 };
 
+// Get Customer-Coupon Usage Analytics
+export const GetCustomerCouponUsage = async (req, res) => {
+  try {
+    const bookings = await Booking.find({ couponCode: { $exists: true, $ne: null } })
+      .populate('userId', 'name email phone')
+      .populate('couponCode', 'code title')
+      .populate('packageId', 'name title')
+      .sort({ createdAt: -1 });
+
+    // Group by customer and coupon
+    const customerCouponMap = new Map();
+    
+    bookings.forEach(booking => {
+      if (booking.userId && booking.couponCode) {
+        const key = `${booking.userId._id}-${booking.couponCode._id}`;
+        if (!customerCouponMap.has(key)) {
+          customerCouponMap.set(key, {
+            customerId: booking.userId._id,
+            customerName: booking.userId.name || booking.userId.email || 'Unknown',
+            customerEmail: booking.userId.email || 'N/A',
+            couponCode: booking.couponCode.code,
+            couponTitle: booking.couponCode.title || 'N/A',
+            usageCount: 0
+          });
+        }
+        customerCouponMap.get(key).usageCount++;
+      }
+    });
+
+    const data = Array.from(customerCouponMap.values());
+
+    return res.status(200).json({
+      status: true,
+      message: "Customer-Coupon usage data fetched successfully",
+      data: data
+    });
+  } catch (error) {
+    console.error("GetCustomerCouponUsage error:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Error fetching customer-coupon usage data",
+      error: error.message
+    });
+  }
+};
+
+// Get Coupon-Package Usage Analytics
+export const GetCouponPackageUsage = async (req, res) => {
+  try {
+    const bookings = await Booking.find({ couponCode: { $exists: true, $ne: null } })
+      .populate('couponCode', 'code title')
+      .populate('packageId', 'name title')
+      .sort({ createdAt: -1 });
+
+    // Group by coupon and package
+    const couponPackageMap = new Map();
+    
+    bookings.forEach(booking => {
+      if (booking.couponCode && booking.packageId) {
+        const key = `${booking.couponCode._id}-${booking.packageId._id}`;
+        if (!couponPackageMap.has(key)) {
+          couponPackageMap.set(key, {
+            couponCode: booking.couponCode.code,
+            couponTitle: booking.couponCode.title || 'N/A',
+            packageId: booking.packageId._id,
+            packageName: booking.packageId.name || booking.packageId.title || 'N/A',
+            usageCount: 0
+          });
+        }
+        couponPackageMap.get(key).usageCount++;
+      }
+    });
+
+    const data = Array.from(couponPackageMap.values());
+
+    return res.status(200).json({
+      status: true,
+      message: "Coupon-Package usage data fetched successfully",
+      data: data
+    });
+  } catch (error) {
+    console.error("GetCouponPackageUsage error:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Error fetching coupon-package usage data",
+      error: error.message
+    });
+  }
+};
+
+// Get Package-Coupon Usage Analytics
+export const GetPackageCouponUsage = async (req, res) => {
+  try {
+    const bookings = await Booking.find({ couponCode: { $exists: true, $ne: null } })
+      .populate('packageId', 'name title')
+      .populate('couponCode', 'code title')
+      .sort({ createdAt: -1 });
+
+    // Group by package and coupon
+    const packageCouponMap = new Map();
+    
+    bookings.forEach(booking => {
+      if (booking.packageId && booking.couponCode) {
+        const key = `${booking.packageId._id}-${booking.couponCode._id}`;
+        if (!packageCouponMap.has(key)) {
+          packageCouponMap.set(key, {
+            packageId: booking.packageId._id,
+            packageName: booking.packageId.name || booking.packageId.title || 'N/A',
+            couponCode: booking.couponCode.code,
+            couponTitle: booking.couponCode.title || 'N/A',
+            usageCount: 0
+          });
+        }
+        packageCouponMap.get(key).usageCount++;
+      }
+    });
+
+    const data = Array.from(packageCouponMap.values());
+
+    return res.status(200).json({
+      status: true,
+      message: "Package-Coupon usage data fetched successfully",
+      data: data
+    });
+  } catch (error) {
+    console.error("GetPackageCouponUsage error:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Error fetching package-coupon usage data",
+      error: error.message
+    });
+  }
+};
+
 // Verify Coupon (for frontend use)
 export const VerifyCoupon = async (req, res) => {
   try {
@@ -351,7 +502,7 @@ export const VerifyCoupon = async (req, res) => {
     }
 
     // Check user limit (one time use per user)
-    if (userId && coupon.userLimit) {
+    if (userId && coupon.userLimit !== null && coupon.userLimit > 0) {
       const userBookings = await Booking.countDocuments({
         couponCode: coupon._id,
         userId: userId

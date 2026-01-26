@@ -1,6 +1,6 @@
 import CommunityTrip from '../../../models/CommunityTripModel.js';
 import CommunityMessage from '../../../models/CommunityMessageModel.js';
-import User from '../../../models/UserModel.js';
+import Customer from '../../../models/CustomerModel.js';
 import Notification from '../../../models/NotificationModel.js';
 import Admin from '../../../models/AdminModel.js';
 import { getIO } from '../../../socket/socketHandler.js';
@@ -82,7 +82,7 @@ const createCommunityTrip = async (req, res) => {
     if (req.user && (!req.user.role || req.user.role !== 'admin')) {
       // This is a user request, not admin
       finalOrganizerId = req.user.id || req.user._id || req.user.userId;
-      const user = await User.findById(finalOrganizerId);
+      const user = await Customer.findById(finalOrganizerId);
       if (user) {
         finalOrganizerName = user.name || user.email || 'User';
         finalOrganizerRating = user.rating || 0;
@@ -204,7 +204,7 @@ const createCommunityTrip = async (req, res) => {
     // If user-created trip, create notification for admins
     if (!isAdminRequest && finalOrganizerId) {
       const admins = await Admin.find({});
-      const user = await User.findById(finalOrganizerId);
+      const user = await Customer.findById(finalOrganizerId);
       
       for (const admin of admins) {
         await Notification.create({
@@ -474,7 +474,7 @@ const joinCommunityTrip = async (req, res) => {
     }
 
     // Get user info
-    const user = await User.findById(userId);
+    const user = await Customer.findById(userId);
     if (!user) {
       return res.status(404).json({
         status: false,

@@ -3,7 +3,7 @@ import Booking from "../../models/BookingModel.js";
 import Packages from "../../models/PackageModel.js";
 import Notification from "../../models/NotificationModel.js";
 import SlotJoinRequest from "../../models/SlotJoinRequestModel.js";
-import User from "../../models/UserModel.js";
+import Customer from "../../models/CustomerModel.js";
 import moment from "moment-timezone";
 
 // Create Slot by Traveler with All Guest Details
@@ -328,7 +328,7 @@ export const requestToJoinSlot = async (req, res) => {
     });
 
     // Get requester details
-    const requester = await User.findById(userId);
+    const requester = await Customer.findById(userId);
 
     // Create notification for slot creator
     await Notification.create({

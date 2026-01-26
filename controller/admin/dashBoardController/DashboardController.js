@@ -1,5 +1,5 @@
 import Booking from "../../../models/BookingModel.js";
-import User from "../../../models/UserModel.js";
+import Customer from "../../../models/CustomerModel.js";
 import Packages from "../../../models/PackageModel.js";
 import Vendor from "../../../models/VendorModel.js";
 import moment from "moment-timezone";

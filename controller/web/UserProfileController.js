@@ -1,4 +1,4 @@
-import User from "../../models/UserModel.js";
+import Customer from "../../models/CustomerModel.js";
 import Booking from "../../models/BookingModel.js";
 import Packages from "../../models/PackageModel.js";
 import CaptainAvailability from "../../models/CaptainAvailabilityModel.js";
@@ -16,7 +16,7 @@ export const getUserProfile = async (req, res) => {
       });
     }
 
-    const user = await User.findById(userId).select('-password');
+    const user = await Customer.findById(userId).select('-password');
 
     if (!user) {
       return res.status(404).json({
@@ -94,7 +94,7 @@ export const updateUserProfile = async (req, res) => {
     delete updateData._id;
     delete updateData.__v;
 
-    const user = await User.findByIdAndUpdate(
+    const user = await Customer.findByIdAndUpdate(
       userId,
       { $set: updateData },
       { new: true, runValidators: true }
