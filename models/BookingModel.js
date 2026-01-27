@@ -5,7 +5,7 @@ const BookingSchema = new mongoose.Schema(
     packageId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Packages",
-      required: true,
+      required: false, // Optional for captain-only bookings
     },
     userId: {
       type: mongoose.Schema.Types.ObjectId,

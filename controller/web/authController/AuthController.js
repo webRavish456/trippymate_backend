@@ -311,7 +311,7 @@ export const resetPassword = async (req, res) => {
       .digest("hex");
 
     // Find user with valid token
-    const user = await User.findOne({
+    const user = await Customer.findOne({
       resetPasswordToken,
       resetPasswordExpires: { $gt: Date.now() },
     });
@@ -430,7 +430,7 @@ export const googleAuth = async (req, res) => {
     }
 
     // Check if user exists
-    let user = await User.findOne({ email });
+    let user = await Customer.findOne({ email });
 
     if (user) {
       // Update Google ID if not set
@@ -445,7 +445,7 @@ export const googleAuth = async (req, res) => {
       await user.save();
     } else {
       // Create new user
-      user = await User.create({
+      user = await Customer.create({
         name,
         email: email.toLowerCase().trim(),
         googleId,

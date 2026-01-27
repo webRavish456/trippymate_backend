@@ -146,26 +146,37 @@ export const getUserBookings = async (req, res) => {
 
     const bookings = await Booking.find(query)
       .populate('packageId', 'title destination duration images price')
+      .populate('captainId', 'name image location')
       .sort({ createdAt: -1 });
 
     // Transform bookings for frontend
     const transformedBookings = bookings.map(booking => {
       const packageData = booking.packageId || {};
+      const captainData = booking.captainId || {};
       const tripDate = booking.tripdate || booking.tripDate || new Date();
       const isUpcoming = new Date(tripDate) >= new Date();
+      
+      // For captain bookings (no package), use captain info
+      const isCaptainBooking = !booking.packageId && booking.captainId;
       
       return {
         id: booking._id.toString(),
         bookingId: booking.bookingId || booking._id.toString().substring(0, 8).toUpperCase(),
-        packageName: packageData.title || 'Package',
-        destination: packageData.destination || 'Unknown',
+        packageName: isCaptainBooking ? (captainData.name ? `Captain - ${captainData.name}` : 'Captain') : (packageData.title || 'Package'),
+        destination: isCaptainBooking 
+          ? (booking.guestDetails?.[0]?.guestAddress || captainData.location || 'Custom')
+          : (packageData.destination || 'Unknown'),
         tripDate: tripDate,
-        duration: packageData.duration || 'N/A',
+        bookingDate: booking.createdAt || tripDate,
+        duration: isCaptainBooking ? 'Custom' : (packageData.duration || 'N/A'),
         guests: booking.guestDetails?.length || 0,
-        totalAmount: booking.totalAmount || packageData.price || 0,
+        totalAmount: booking.totalAmount || booking.finalAmount || packageData.price || 0,
         status: isUpcoming ? 'confirmed' : 'completed',
-        image: packageData.images?.[0]?.path || packageData.images?.[0] || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&h=300&fit=crop',
-        hasFeedback: booking.feedback ? true : false
+        paymentStatus: booking.paymentStatus || 'pending',
+        image: isCaptainBooking ? (captainData.image || captainData.backgroundImage || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&h=300&fit=crop') : (packageData.images?.[0]?.path || packageData.images?.[0] || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=400&h=300&fit=crop'),
+        hasFeedback: booking.feedback ? true : false,
+        isCaptainBooking: isCaptainBooking,
+        captainId: booking.captainId?._id?.toString() || booking.captainId?.toString() || null
       };
     });
 
@@ -198,7 +209,8 @@ export const getBookingDetails = async (req, res) => {
     }
 
     const booking = await Booking.findById(id)
-      .populate('packageId');
+      .populate('packageId')
+      .populate('captainId');
 
     if (!booking) {
       return res.status(404).json({
@@ -217,29 +229,41 @@ export const getBookingDetails = async (req, res) => {
     }
 
     const packageData = booking.packageId || {};
+    const captainData = booking.captainId || {};
+    const isCaptainBooking = !booking.packageId && booking.captainId;
+    
     const tripDate = booking.tripdate || booking.tripDate || new Date();
+    const bookingDate = booking.createdAt || booking.tripDate || new Date();
     const isUpcoming = new Date(tripDate) >= new Date();
 
     const bookingDetails = {
       id: booking._id.toString(),
       bookingId: booking.bookingId || booking._id.toString().substring(0, 8).toUpperCase(),
-      packageName: packageData.title || 'Package',
-      destination: packageData.destination || 'Unknown',
+      packageName: isCaptainBooking 
+        ? (captainData.name ? `Captain - ${captainData.name}` : 'Captain')
+        : (packageData.title || 'Package'),
+      destination: isCaptainBooking
+        ? (booking.guestDetails?.[0]?.guestAddress || captainData.location || 'Custom')
+        : (packageData.destination || 'Unknown'),
       tripDate: tripDate,
-      duration: packageData.duration || 'N/A',
+      bookingDate: bookingDate,
+      duration: isCaptainBooking ? 'Custom' : (packageData.duration || 'N/A'),
       guests: booking.guestDetails?.length || 0,
-      totalAmount: booking.totalAmount || packageData.price || 0,
-      baseAmount: booking.baseAmount || booking.totalAmount || packageData.price || 0,
-      discount: booking.discount || 0,
+      totalAmount: booking.totalAmount || booking.finalAmount || packageData.price || 0,
+      baseAmount: booking.baseAmount || booking.totalAmount || booking.finalAmount || packageData.price || 0,
+      discount: booking.discountAmount || booking.discount || 0,
       couponCode: booking.couponCode || null,
       promoCode: booking.promoCode || null,
       status: isUpcoming ? 'confirmed' : 'completed',
-      image: packageData.images?.[0]?.path || packageData.images?.[0] || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=600&fit=crop',
+      paymentStatus: booking.paymentStatus || 'pending',
+      image: isCaptainBooking
+        ? (captainData.image || captainData.backgroundImage || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=600&fit=crop')
+        : (packageData.images?.[0]?.path || packageData.images?.[0] || 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=600&fit=crop'),
       groups: booking.guestDetails ? [{
         groupId: 'G1',
         members: booking.guestDetails.map((guest, index) => ({
-          name: guest.name || `Guest ${index + 1}`,
-          age: guest.age || 0
+          name: guest.guestName || guest.name || `Guest ${index + 1}`,
+          age: guest.guestAge || guest.age || null
         }))
       }] : [],
       contactDetails: {
@@ -253,7 +277,9 @@ export const getBookingDetails = async (req, res) => {
         highlights: packageData.highlights || [],
         inclusions: packageData.inclusions || []
       },
-      hasFeedback: booking.feedback ? true : false
+      hasFeedback: booking.feedback ? true : false,
+      isCaptainBooking: isCaptainBooking,
+      captainId: booking.captainId?._id?.toString() || booking.captainId?.toString() || null
     };
 
     return res.status(200).json({

@@ -18,6 +18,7 @@ import uploadPackage from '../middleware/upload/package/package.js';
 import uploadBlog from '../middleware/upload/blog/blog.js';
 import uploadTestimonial from '../middleware/upload/testimonial/testimonial.js';
 import uploadTrip from '../middleware/upload/trip/trip.js';
+import uploadAdventure from '../middleware/upload/adventure/adventure.js';
 
 // ============================================
 // CONTROLLER IMPORTS - ADMIN
@@ -156,6 +157,13 @@ import {
   DeleteBanner
 } from '../controller/admin/bannerController/BannerController.js';
 import {
+  AddAdventurePost,
+  GetAllAdventurePosts,
+  GetAdventurePostById,
+  UpdateAdventurePost,
+  DeleteAdventurePost
+} from '../controller/admin/adventureController/AdventureController.js';
+import {
   AddCaptain,
   GetAllCaptains,
   GetCaptainById,
@@ -195,7 +203,7 @@ import { addBooking } from '../controller/web/BookingController.js';
 import { getUserProfile, updateUserProfile, getUserBookings, getBookingDetails } from '../controller/web/UserProfileController.js';
 import { getUserWishlist, addToWishlist, removeFromWishlist } from '../controller/web/WishlistController.js';
 import { submitFeedback, getFeedbackByBooking } from '../controller/web/FeedbackController.js';
-import { createPaymentOrder, verifyPayment } from '../controller/web/PaymentController.js';
+import { createPaymentOrder, verifyPayment, createCaptainPaymentOrder, verifyCaptainPayment } from '../controller/web/PaymentController.js';
 import {
   getAllBlogs as getWebBlogs,
   getBlogById as getWebBlogById,
@@ -216,6 +224,13 @@ import {
   checkCombinedAvailability,
 } from '../controller/web/AvailabilityController.js';
 import { getAllPayments, getPaymentStatistics } from '../controller/admin/paymentController/PaymentController.js';
+import {
+  getEmailSettings,
+  saveEmailSettings,
+  getRazorpaySettings,
+  saveRazorpaySettings,
+  getAllSettings
+} from '../controller/admin/settingsController/SettingsController.js';
 import {
   createSlotByTraveler,
   requestToJoinSlot,
@@ -243,6 +258,10 @@ import {
   getCurrentUser
 } from '../controller/web/authController/AuthController.js';
 import { GetActiveBanners } from '../controller/web/bannerController/BannerController.js';
+import {
+  GetActiveAdventurePosts,
+  GetHomepageAdventurePosts
+} from '../controller/web/adventureController/AdventureController.js';
 
 // ============================================
 // OTP ROUTES
@@ -438,6 +457,24 @@ router.route('/admin/banner/update/:id').put(verifyToken, uploadBanner, UpdateBa
 router.route('/admin/banner/delete/:id').delete(verifyToken, DeleteBanner);
 
 // ============================================
+// ADMIN SETTINGS ROUTES
+// ============================================
+router.route('/admin/settings/email').get(verifyToken, getEmailSettings);
+router.route('/admin/settings/email').post(verifyToken, saveEmailSettings);
+router.route('/admin/settings/razorpay').get(verifyToken, getRazorpaySettings);
+router.route('/admin/settings/razorpay').post(verifyToken, saveRazorpaySettings);
+router.route('/admin/settings/all').get(verifyToken, getAllSettings);
+
+// ============================================
+// ADMIN ADVENTURE POST ROUTES
+// ============================================
+router.route('/admin/adventure-post/add').post(verifyToken, uploadAdventure, AddAdventurePost);
+router.route('/admin/adventure-post/all').get(verifyToken, GetAllAdventurePosts);
+router.route('/admin/adventure-post/:id').get(verifyToken, GetAdventurePostById);
+router.route('/admin/adventure-post/update/:id').put(verifyToken, uploadAdventure, UpdateAdventurePost);
+router.route('/admin/adventure-post/delete/:id').delete(verifyToken, DeleteAdventurePost);
+
+// ============================================
 // ADMIN CAPTAIN ROUTES
 // ============================================
 router.route('/admin/captain/add').post(verifyToken, uploadCaptain, AddCaptain);
@@ -532,6 +569,8 @@ router.route('/booking/addBooking').post(addBooking);
 // ============================================
 router.route('/payment/create-order').post(createPaymentOrder);
 router.route('/payment/verify').post(verifyPayment);
+router.route('/payment/captain/create-order').post(createCaptainPaymentOrder);
+router.route('/payment/captain/verify').post(verifyCaptainPayment);
 
 // ============================================
 // AVAILABILITY ROUTES
@@ -634,6 +673,12 @@ router.route('/user/faq/category/:category').get(getFAQsByCategory);
 // USER BANNER ROUTES (Frontend - Public)
 // ============================================
 router.route('/user/banner/active').get(GetActiveBanners);
+
+// ============================================
+// USER ADVENTURE POST ROUTES (Frontend - Public)
+// ============================================
+router.route('/user/adventure-post/all').get(GetActiveAdventurePosts);
+router.route('/user/adventure-post/homepage').get(GetHomepageAdventurePosts);
 
 // ============================================
 // LEGACY ROUTES (keeping for backward compatibility)

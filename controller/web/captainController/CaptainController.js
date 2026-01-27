@@ -4,7 +4,8 @@ import CaptainAvailability from "../../../models/CaptainAvailabilityModel.js";
 // Check Captain Availability
 export const CheckCaptainAvailability = async (req, res) => {
   try {
-    const { captainId, startDate, endDate } = req.query;
+    const { captainId } = req.params; // Get from URL params
+    const { startDate, endDate } = req.query; // Get from query string
 
     if (!captainId || !startDate || !endDate) {
       return res.status(400).json({

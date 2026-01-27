@@ -7,23 +7,48 @@ import PromoCode from "../../models/PromoCodeModel.js";
 import Customer from "../../models/CustomerModel.js";
 import Slot from "../../models/SlotModel.js";
 import Captain from "../../models/CaptainModel.js";
+import Settings from "../../models/SettingsModel.js";
+import { BookCaptain } from "./captainController/BookingController.js";
 import moment from "moment-timezone";
 
-// Initialize Razorpay only if credentials are available
+// Initialize Razorpay from database settings
 let razorpay = null;
-try {
-  if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
-    razorpay = new Razorpay({
-      key_id: process.env.RAZORPAY_KEY_ID,
-      key_secret: process.env.RAZORPAY_KEY_SECRET,
-    });
-  } else {
-    console.warn("Razorpay credentials not found. Payment functionality will be disabled.");
+let razorpayKeyId = null;
+
+const initializeRazorpay = async () => {
+  try {
+    const settings = await Settings.getSettings();
+    if (settings?.razorpaySettings?.enabled && 
+        settings?.razorpaySettings?.keyId && 
+        settings?.razorpaySettings?.keySecret) {
+      razorpay = new Razorpay({
+        key_id: settings.razorpaySettings.keyId,
+        key_secret: settings.razorpaySettings.keySecret,
+      });
+      razorpayKeyId = settings.razorpaySettings.keyId;
+      console.log("Razorpay initialized from database settings");
+    } else if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
+      // Fallback to environment variables
+      razorpay = new Razorpay({
+        key_id: process.env.RAZORPAY_KEY_ID,
+        key_secret: process.env.RAZORPAY_KEY_SECRET,
+      });
+      razorpayKeyId = process.env.RAZORPAY_KEY_ID;
+      console.log("Razorpay initialized from environment variables");
+    } else {
+      console.warn("Razorpay credentials not found. Payment functionality will be disabled.");
+      razorpay = null;
+      razorpayKeyId = null;
+    }
+  } catch (error) {
+    console.error("Error initializing Razorpay:", error.message);
+    razorpay = null;
+    razorpayKeyId = null;
   }
-} catch (error) {
-  console.error("Error initializing Razorpay:", error.message);
-  razorpay = null;
-}
+};
+
+// Initialize on module load
+initializeRazorpay();
 
 // Calculate booking amount based on guest details and package prices
 const calculateBookingAmount = (guestDetails, packageData) => {
@@ -287,6 +312,11 @@ export const createPaymentOrder = async (req, res) => {
 
     const order = await razorpay.orders.create(options);
 
+    // Ensure Razorpay is initialized (refresh from database)
+    if (!razorpay) {
+      await initializeRazorpay();
+    }
+
     // Return order details
     return res.status(200).json({
       status: true,
@@ -295,7 +325,7 @@ export const createPaymentOrder = async (req, res) => {
         orderId: order.id,
         amount: amountInPaise,
         currency: "INR",
-        keyId: process.env.RAZORPAY_KEY_ID,
+        keyId: razorpayKeyId || process.env.RAZORPAY_KEY_ID,
         baseAmount,
         discountAmount,
         finalAmount,
@@ -308,6 +338,237 @@ export const createPaymentOrder = async (req, res) => {
     return res.status(500).json({
       status: false,
       message: "Error creating payment order",
+      error: error.message,
+    });
+  }
+};
+
+// Create Razorpay Order for Captain Booking
+export const createCaptainPaymentOrder = async (req, res) => {
+  try {
+    // Ensure Razorpay is initialized (refresh from database)
+    if (!razorpay) {
+      await initializeRazorpay();
+    }
+
+    if (!razorpay) {
+      return res.status(500).json({
+        status: false,
+        message: "Payment gateway not configured. Please configure Razorpay settings in admin panel.",
+      });
+    }
+
+    const { captainId, userId, startDate, endDate, amount, couponCode, promoCode } = req.body;
+
+    // Validate required fields
+    if (!captainId || !userId || !startDate || !endDate || !amount) {
+      return res.status(400).json({
+        status: false,
+        message: "Captain ID, User ID, dates, and amount are required"
+      });
+    }
+
+    // Check if captain exists
+    const captain = await Captain.findById(captainId);
+    if (!captain) {
+      return res.status(404).json({
+        status: false,
+        message: "Captain not found"
+      });
+    }
+
+    if (captain.status !== "active") {
+      return res.status(400).json({
+        status: false,
+        message: "Selected captain is not available"
+      });
+    }
+
+    // Calculate base amount
+    let baseAmount = parseFloat(amount) || 0;
+
+    // Calculate discount if coupon/promo code provided
+    let discountAmount = 0;
+    let couponId = null;
+    let promoId = null;
+
+    if (couponCode || promoCode) {
+      const discountResult = await calculateDiscount(
+        baseAmount,
+        couponCode,
+        promoCode,
+        userId
+      );
+      discountAmount = discountResult.discountAmount;
+      couponId = discountResult.couponId;
+      promoId = discountResult.promoId;
+    }
+
+    // Calculate final amount (in paise for Razorpay)
+    const finalAmount = Math.max(0, baseAmount - discountAmount);
+    const amountInPaise = Math.round(finalAmount * 100);
+
+    if (amountInPaise <= 0) {
+      return res.status(400).json({
+        status: false,
+        message: "Invalid booking amount"
+      });
+    }
+
+    // Create Razorpay order
+    const options = {
+      amount: amountInPaise,
+      currency: "INR",
+      receipt: `captain_booking_${Date.now()}`,
+      notes: {
+        captainId: captainId.toString(),
+        userId: userId.toString(),
+        startDate: startDate,
+        endDate: endDate,
+        baseAmount: baseAmount.toString(),
+        discountAmount: discountAmount.toString(),
+        finalAmount: finalAmount.toString(),
+        couponCode: couponCode || "",
+        promoCode: promoCode || "",
+      },
+    };
+
+    const order = await razorpay.orders.create(options);
+
+    // Return order details
+    return res.status(200).json({
+      status: true,
+      message: "Payment order created successfully",
+      data: {
+        orderId: order.id,
+        amount: amountInPaise,
+        currency: "INR",
+        keyId: razorpayKeyId || process.env.RAZORPAY_KEY_ID,
+        baseAmount,
+        discountAmount,
+        finalAmount,
+        couponId,
+        promoId,
+      },
+    });
+  } catch (error) {
+    console.error("Create captain payment order error:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Error creating payment order",
+      error: error.message,
+    });
+  }
+};
+
+// Verify Captain Payment and Create Booking
+export const verifyCaptainPayment = async (req, res) => {
+  try {
+    // Ensure Razorpay is initialized
+    if (!razorpay) {
+      await initializeRazorpay();
+    }
+
+    if (!razorpay) {
+      return res.status(500).json({
+        status: false,
+        message: "Payment gateway not configured. Please configure Razorpay settings in admin panel.",
+      });
+    }
+
+    const {
+      orderId,
+      paymentId,
+      signature,
+      captainId,
+      userId,
+      startDate,
+      endDate,
+      destination,
+      customerName,
+      customerEmail,
+      customerPhone,
+      numberOfDays,
+      specialRequirements,
+      amount,
+      couponCode,
+      promoCode,
+    } = req.body;
+
+    // Validate required fields
+    if (!orderId || !paymentId || !signature || !captainId || !userId || !startDate || !endDate || !customerName) {
+      return res.status(400).json({
+        status: false,
+        message: "Order ID, Payment ID, Signature, Captain ID, User ID, dates, and customer name are required"
+      });
+    }
+
+    // Verify payment signature
+    const generatedSignature = crypto
+      .createHmac("sha256", razorpay.key_secret || process.env.RAZORPAY_KEY_SECRET)
+      .update(`${orderId}|${paymentId}`)
+      .digest("hex");
+
+    if (generatedSignature !== signature) {
+      return res.status(400).json({
+        status: false,
+        message: "Invalid payment signature"
+      });
+    }
+
+    // Call BookCaptain directly
+    const bookingReq = {
+      body: {
+        captainId,
+        startDate,
+        endDate,
+        destination,
+        customerName,
+        customerEmail,
+        customerPhone,
+        numberOfDays,
+        specialRequirements,
+        userId,
+        amount,
+        promoCode,
+        couponCode
+      }
+    };
+
+    // Create a promise wrapper for BookCaptain
+    let bookingResult = null;
+    const bookingRes = {
+      status: (code) => ({
+        json: (data) => {
+          bookingResult = { statusCode: code, ...data };
+          return bookingResult;
+        }
+      })
+    };
+
+    await BookCaptain(bookingReq, bookingRes);
+
+    if (bookingResult && bookingResult.status) {
+      return res.status(200).json({
+        status: true,
+        message: "Payment verified and booking created successfully",
+        data: {
+          booking: bookingResult.data,
+          paymentId,
+          orderId
+        }
+      });
+    } else {
+      return res.status(bookingResult?.statusCode || 400).json({
+        status: false,
+        message: bookingResult?.message || "Failed to create booking after payment verification"
+      });
+    }
+  } catch (error) {
+    console.error("Verify captain payment error:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Error verifying payment",
       error: error.message,
     });
   }

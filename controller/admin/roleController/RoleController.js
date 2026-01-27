@@ -271,10 +271,15 @@ export const updateRole = async (req, res) => {
 
     // Update name if provided
     if (name && name.trim()) {
-      // Check if new name already exists (excluding current role)
+      // Generate roleKey from name
+      const roleKey = name.trim().toLowerCase().replace(/\s+/g, '_');
+      
+      // Check if new name or roleKey already exists (excluding current role)
       const existingRole = await Role.findOne({ 
-        name: name.trim(),
-        _id: { $ne: id }
+        $or: [
+          { name: name.trim(), _id: { $ne: id } },
+          { roleKey: roleKey, _id: { $ne: id } }
+        ]
       });
       if (existingRole) {
         return res.status(400).json({
@@ -283,6 +288,7 @@ export const updateRole = async (req, res) => {
         });
       }
       role.name = name.trim();
+      role.roleKey = roleKey;
     }
 
     // Update status if provided

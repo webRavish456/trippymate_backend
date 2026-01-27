@@ -1,23 +1,23 @@
-// otp.js
+
 import OTP from "../../models/optModel.js";
 import twilio from "twilio";
 import sgMail from "@sendgrid/mail";
 
-// Twilio setup for SMS
+
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
 const client = twilio(accountSid, authToken);
 
-// SendGrid setup for Email
+
 sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
-// Helper function to validate email
+
 const isValidEmail = (email) => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return emailRegex.test(email);
 };
 
-// Helper function to validate phone
+
 const isValidPhone = (phone) => {
   const phoneRegex = /^[+]?[\d\s\-\(\)]{10,}$/;
   return phoneRegex.test(phone);
