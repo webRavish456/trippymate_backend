@@ -82,6 +82,20 @@ const adminLogin=async(req,res)=>{
             }));
         }
 
+        // Ensure Super Admin always has roles_permissions so they can access Roles & Permissions page
+        if (roleName && roleName.toLowerCase().trim() === 'super admin') {
+            const hasRolesPerm = permissions.some(p => p.module === 'roles_permissions');
+            if (!hasRolesPerm) {
+                permissions = permissions.concat([{
+                    module: 'roles_permissions',
+                    create: true,
+                    read: true,
+                    update: true,
+                    delete: true
+                }]);
+            }
+        }
+
         const token=jwt.sign({
             id: adminDetails._id,
             _id: adminDetails._id,

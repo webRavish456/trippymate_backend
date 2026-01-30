@@ -14,7 +14,7 @@ const NotificationSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ["slot_created", "slot_joined", "slot_full", "booking_confirmed", "trip_reminder", "community_trip_join_request", "community_trip_creation_request", "community_trip_message"],
+      enum: ["slot_created", "slot_joined", "slot_full", "booking_confirmed", "trip_reminder", "community_trip_join_request", "community_trip_creation_request", "community_trip_message", "package_booked", "trip_completed", "captain_assigned", "vendor_booking", "join_request_approved", "join_request_rejected"],
       required: true,
     },
     title: {
@@ -50,6 +50,16 @@ const NotificationSchema = new mongoose.Schema(
       ref: "Customer",
       default: null,
     },
+    captainId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Captain",
+      default: null,
+    },
+    vendorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Vendor",
+      default: null,
+    },
     isRead: {
       type: Boolean,
       default: false,
@@ -62,6 +72,12 @@ const NotificationSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // For join/creation requests: hide Approve/Reject only after admin takes action
+    actionTaken: {
+      type: String,
+      enum: ['approved', 'rejected'],
+      default: null,
+    },
   },
   { timestamps: true }
 );
@@ -69,6 +85,8 @@ const NotificationSchema = new mongoose.Schema(
 // Index for faster queries
 NotificationSchema.index({ userId: 1, isRead: 1 });
 NotificationSchema.index({ adminId: 1, isRead: 1 });
+NotificationSchema.index({ captainId: 1, isRead: 1 });
+NotificationSchema.index({ vendorId: 1, isRead: 1 });
 NotificationSchema.index({ createdAt: -1 });
 
 const Notification = mongoose.model("Notification", NotificationSchema);

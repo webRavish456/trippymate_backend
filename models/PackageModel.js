@@ -38,7 +38,7 @@ const PackageSchema = new mongoose.Schema({
   },
   category: {
     type: String,
-    enum: ["adventure", "family", "honeymoon", "holiday", "cultural", "religious", "wildlife", "beach", "hill-station", "weekend", "other"],
+    enum: ["adventure", "family", "honeymoon", "romantic", "group", "holiday", "cultural", "religious", "wildlife", "beach", "hill-station", "weekend", "other"],
     default: "other"
   },
   state: {

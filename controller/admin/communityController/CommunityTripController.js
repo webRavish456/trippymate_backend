@@ -313,16 +313,28 @@ const getAllCommunityTrips = async (req, res) => {
 const getCommunityTripById = async (req, res) => {
   try {
     const { tripId } = req.params;
+    const isAdmin = req.user && req.user.role === 'admin';
 
     const trip = await CommunityTrip.findById(tripId)
       .populate('organizerId', 'name email phone')
-      .populate('members.userId', 'name email phone');
+      .populate('members.userId', 'name email phone address profilePicture');
 
     if (!trip) {
       return res.status(404).json({
         status: false,
         message: "Community trip not found"
       });
+    }
+
+    // For non-admin (frontend): do not show trip until admin has approved it
+    if (!isAdmin) {
+      const allowed = trip.approvalStatus === 'approved' || !trip.approvalStatus;
+      if (!allowed) {
+        return res.status(404).json({
+          status: false,
+          message: "Community trip not found"
+        });
+      }
     }
 
     return res.status(200).json({
@@ -436,10 +448,11 @@ const deleteCommunityTrip = async (req, res) => {
 const joinCommunityTrip = async (req, res) => {
   try {
     const { tripId } = req.params;
-    // Get userId from token (req.user) or from body
+    // Get userId from token (req.user) or from body — customer token has userId
     const userId = req.user?.id || req.user?._id || req.user?.userId || req.body?.userId;
+    const userIdStr = userId && (typeof userId === 'string' ? userId : (userId.toString ? userId.toString() : String(userId)));
 
-    if (!userId) {
+    if (!userIdStr) {
       return res.status(400).json({
         status: false,
         message: "User ID is required"
@@ -456,8 +469,35 @@ const joinCommunityTrip = async (req, res) => {
     }
 
     // Check if user is already a member
-    const existingMember = trip.members.find(m => m.userId.toString() === userId);
+    const existingMember = trip.members.find(m => (m.userId && (m.userId.toString ? m.userId.toString() : String(m.userId))) === userIdStr);
     if (existingMember) {
+      // If already pending, ensure admins have at least one notification (reminder) so they can approve
+      if (existingMember.status === 'pending') {
+        try {
+          const existingNotif = await Notification.findOne({
+            tripId: trip._id,
+            requestUserId: userId,
+            type: 'community_trip_join_request'
+          }).lean();
+          if (!existingNotif) {
+            const user = await Customer.findById(userId);
+            const admins = await Admin.find({}).lean();
+            for (const admin of admins) {
+              await Notification.create({
+                adminId: admin._id,
+                type: 'community_trip_join_request',
+                title: 'New Join Request',
+                message: `${user?.name || user?.email || 'A user'} wants to join "${trip.title}"`,
+                tripId: trip._id,
+                requestUserId: userId,
+                isRead: false
+              });
+            }
+          }
+        } catch (e) {
+          console.error('Reminder notification create failed:', e);
+        }
+      }
       return res.status(400).json({
         status: false,
         message: "User is already a member of this trip"
@@ -484,78 +524,93 @@ const joinCommunityTrip = async (req, res) => {
 
     // Add member
     trip.members.push({
-      userId,
+      userId: userId,
       joinedAt: new Date(),
       status: 'pending'
     });
 
     await trip.save();
 
-    // Create notification for all admins
-    const admins = await Admin.find({});
-    console.log(`Creating notifications for ${admins.length} admins`);
+    // Create notification for all admins (so admin panel shows "New Join Request" to approve)
     const notifications = [];
-
-    for (const admin of admins) {
-      const notification = await Notification.create({
-        adminId: admin._id,
-        type: 'community_trip_join_request',
-        title: 'New Join Request',
-        message: `${user.name || user.email} wants to join "${trip.title}"`,
-        tripId: trip._id,
-        requestUserId: userId,
-        isRead: false
-      });
-
-      // Populate notification for better data
-      await notification.populate('requestUserId', 'name email profileImage');
-      await notification.populate('tripId', 'title location');
-
-      notifications.push(notification);
-      console.log(`Notification created for admin ${admin._id}: ${notification._id}`);
-    }
-
-    // Emit notification to all connected admin clients via Socket.IO
-    const io = getIO();
-    if (io) {
-      console.log('Socket.IO instance found, emitting notifications');
-      for (const notification of notifications) {
-        const adminId = notification.adminId.toString();
-        const populatedNotification = {
-          _id: notification._id,
+    let io = null;
+    try {
+      const admins = await Admin.find({}).lean();
+      if (admins.length === 0) {
+        console.warn(
+          '[Community Trip Join] No admin users in database. Notifications will NOT appear in admin panel. ' +
+          'Run seed: npm run seed (or createAdmin) to create at least one admin user.'
+        );
+      }
+      for (const admin of admins) {
+        const notification = await Notification.create({
+          adminId: admin._id,
           type: 'community_trip_join_request',
           title: 'New Join Request',
           message: `${user.name || user.email} wants to join "${trip.title}"`,
-          tripId: notification.tripId ? {
-            _id: notification.tripId._id,
-            title: notification.tripId.title,
-            location: notification.tripId.location
-          } : {
-            _id: trip._id,
-            title: trip.title,
-            location: trip.location
-          },
-          requestUserId: notification.requestUserId ? {
-            _id: notification.requestUserId._id,
-            name: notification.requestUserId.name,
-            email: notification.requestUserId.email,
-            profileImage: notification.requestUserId.profileImage
-          } : {
-            _id: userId,
-            name: user.name,
-            email: user.email,
-            profileImage: user.profileImage
-          },
-          isRead: false,
-          isFavorite: false,
-          createdAt: notification.createdAt
-        };
-        
-        console.log(`Emitting notification to admin room: admin:${adminId}`);
-        io.to(`admin:${adminId}`).emit('admin-notification', populatedNotification);
+          tripId: trip._id,
+          requestUserId: userId,
+          isRead: false
+        });
+        await notification.populate('requestUserId', 'name email profileImage');
+        await notification.populate('tripId', 'title location');
+        notifications.push(notification);
+        console.log('Join request: Notification created for admin', admin._id?.toString?.() || admin._id, '—', notification._id);
       }
-    } else {
-      console.log('Socket.IO instance not found');
+
+      io = getIO();
+      if (io) {
+        for (const notification of notifications) {
+          const adminId = notification.adminId?.toString?.() || notification.adminId;
+          const populatedNotification = {
+            _id: notification._id,
+            type: 'community_trip_join_request',
+            title: 'New Join Request',
+            message: `${user.name || user.email} wants to join "${trip.title}"`,
+            tripId: notification.tripId ? {
+              _id: notification.tripId._id,
+              title: notification.tripId.title,
+              location: notification.tripId.location
+            } : { _id: trip._id, title: trip.title, location: trip.location },
+            requestUserId: notification.requestUserId ? {
+              _id: notification.requestUserId._id,
+              name: notification.requestUserId.name,
+              email: notification.requestUserId.email,
+              profileImage: notification.requestUserId.profileImage
+            } : { _id: userId, name: user.name, email: user.email, profileImage: user.profileImage },
+            isRead: false,
+            isFavorite: false,
+            createdAt: notification.createdAt
+          };
+          io.to(`admin:${adminId}`).emit('admin-notification', populatedNotification);
+        }
+      }
+
+      if (trip.organizerId && trip.organizerId.toString() !== userIdStr) {
+        const organizerNotif = await Notification.create({
+          userId: trip.organizerId,
+          type: 'community_trip_join_request',
+          title: 'New Join Request',
+          message: `${user.name || user.email} wants to join "${trip.title}"`,
+          tripId: trip._id,
+          requestUserId: userId,
+          isRead: false
+        });
+        if (io) {
+          io.to(`user:${trip.organizerId.toString()}`).emit('user-notification', {
+            _id: organizerNotif._id,
+            type: 'community_trip_join_request',
+            title: organizerNotif.title,
+            message: organizerNotif.message,
+            tripId: trip._id,
+            requestUserId: userId,
+            createdAt: organizerNotif.createdAt
+          });
+        }
+      }
+    } catch (notifErr) {
+      console.error('Join request: Notification creation failed (join still succeeded):', notifErr?.message || notifErr);
+      if (notifErr?.stack) console.error(notifErr.stack);
     }
 
     return res.status(200).json({
@@ -603,10 +658,10 @@ const approveCommunityTrip = async (req, res) => {
       console.log(`Sending approval email to ${trip.organizerId.email} for trip: ${trip.title}`);
     }
 
-    // Update notification
+    // Update notification(s) so Approve/Reject buttons hide (action taken)
     await Notification.updateMany(
       { tripId: trip._id, $or: [{ type: 'community_trip_join_request' }, { type: 'community_trip_creation_request' }] },
-      { isRead: true, readAt: new Date() }
+      { isRead: true, readAt: new Date(), actionTaken: 'approved' }
     );
 
     // Emit Socket.IO event
@@ -663,10 +718,10 @@ const rejectCommunityTrip = async (req, res) => {
       console.log(`Sending rejection email to ${trip.organizerId.email} for trip: ${trip.title}`);
     }
 
-    // Update notification
+    // Update notification(s) so Approve/Reject buttons hide (action taken)
     await Notification.updateMany(
       { tripId: trip._id, $or: [{ type: 'community_trip_join_request' }, { type: 'community_trip_creation_request' }] },
-      { isRead: true, readAt: new Date() }
+      { isRead: true, readAt: new Date(), actionTaken: 'rejected' }
     );
 
     // Emit Socket.IO event
@@ -694,6 +749,49 @@ const rejectCommunityTrip = async (req, res) => {
   }
 };
 
+// Remove a member from community trip (admin only)
+const removeMemberFromTrip = async (req, res) => {
+  try {
+    const { tripId, userId } = req.params;
+
+    const trip = await CommunityTrip.findById(tripId);
+    if (!trip) {
+      return res.status(404).json({
+        status: false,
+        message: "Community trip not found"
+      });
+    }
+
+    const memberIndex = trip.members.findIndex(m => {
+      if (!m.userId) return false;
+      const id = m.userId._id || m.userId;
+      return id.toString() === userId;
+    });
+    if (memberIndex === -1) {
+      return res.status(404).json({
+        status: false,
+        message: "Member not found in this trip"
+      });
+    }
+
+    trip.members.splice(memberIndex, 1);
+    await trip.save();
+
+    return res.status(200).json({
+      status: true,
+      message: "Member removed from trip successfully",
+      data: trip
+    });
+  } catch (error) {
+    console.error("Error removing member from trip:", error);
+    return res.status(500).json({
+      status: false,
+      message: "Error removing member from trip",
+      error: error.message,
+    });
+  }
+};
+
 export {
   createCommunityTrip,
   getAllCommunityTrips,
@@ -702,6 +800,7 @@ export {
   deleteCommunityTrip,
   joinCommunityTrip,
   approveCommunityTrip,
-  rejectCommunityTrip
+  rejectCommunityTrip,
+  removeMemberFromTrip
 };
 

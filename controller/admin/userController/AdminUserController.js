@@ -340,19 +340,35 @@ export const getAdminUsers = async (req, res) => {
     // Get users from UserModel (users module)
     const users = await User.find().populate('roleId').sort({ createdAt: -1 });
 
-    const usersWithRole = users.map(user => {
+    const usersWithRole = await Promise.all(users.map(async (user) => {
+      let roleId = user.roleId?._id || user.roleId || null;
+      let roleName = user.roleId?.name || null;
+
+      // If User has no role but Admin record exists with roleId, sync from Admin
+      if (!roleId || !roleName) {
+        const admin = await Admin.findOne({ email: user.email }).select('roleId').populate('roleId', 'name');
+        if (admin?.roleId) {
+          roleId = admin.roleId._id;
+          roleName = admin.roleId.name;
+          // Sync User.roleId so next time we don't need fallback
+          if (!user.roleId) {
+            await User.findByIdAndUpdate(user._id, { roleId: admin.roleId._id });
+          }
+        }
+      }
+
       return {
         _id: user._id,
         name: user.name,
         email: user.email,
         phone: user.phone,
-        roleId: user.roleId?._id || null,
-        roleName: user.roleId?.name || null,
+        roleId,
+        roleName,
         status: user.status,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt
       };
-    });
+    }));
 
     return res.status(200).json({
       status: true,

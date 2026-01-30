@@ -107,7 +107,7 @@ import {
   getSimilarSlots,
 } from '../controller/admin/slotController/SlotMatchingController.js';
 import { AddUser, deleteVendor, updateVendor, showVendors, updateVendorStatus, setVendor, changeDefaultPassword } from '../controller/admin/vendorController/VendorController.js';
-import { createCommunityTrip, getAllCommunityTrips, getCommunityTripById, updateCommunityTrip, deleteCommunityTrip, joinCommunityTrip, approveCommunityTrip, rejectCommunityTrip } from '../controller/admin/communityController/CommunityTripController.js';
+import { createCommunityTrip, getAllCommunityTrips, getCommunityTripById, updateCommunityTrip, deleteCommunityTrip, joinCommunityTrip, approveCommunityTrip, rejectCommunityTrip, removeMemberFromTrip } from '../controller/admin/communityController/CommunityTripController.js';
 import { submitRating, getUserRating, getTripRatings } from '../controller/admin/communityController/CommunityRatingController.js';
 import { getAdminNotifications, markNotificationAsRead, markAllNotificationsAsRead, approveJoinRequest, rejectJoinRequest, toggleFavorite } from '../controller/admin/notificationController/NotificationController.js';
 import {
@@ -131,6 +131,15 @@ import {
   GetCouponPackageUsage,
   GetPackageCouponUsage
 } from '../controller/admin/couponController/CouponController.js';
+import {
+  AddReward,
+  GetAllRewards,
+  GetRewardById,
+  UpdateReward,
+  DeleteReward,
+  GetActiveRewards,
+  GetRewardTransactions
+} from '../controller/admin/rewardController/RewardController.js';
 import {
   AddPromoCode,
   GetAllPromoCodes,
@@ -426,6 +435,16 @@ router.route('/admin/coupon/management/coupon-package').get(verifyToken, GetCoup
 router.route('/admin/coupon/management/package-coupon').get(verifyToken, GetPackageCouponUsage);
 
 // ============================================
+// ADMIN REWARD ROUTES
+// ============================================
+router.route('/admin/reward/add').post(verifyToken, AddReward);
+router.route('/admin/reward/all').get(verifyToken, GetAllRewards);
+router.route('/admin/reward/transactions').get(verifyToken, GetRewardTransactions);
+router.route('/admin/reward/:id').get(verifyToken, GetRewardById);
+router.route('/admin/reward/update/:id').put(verifyToken, UpdateReward);
+router.route('/admin/reward/delete/:id').delete(verifyToken, DeleteReward);
+
+// ============================================
 // ADMIN PROMO CODE ROUTES
 // ============================================
 router.route('/admin/promo-code/add').post(verifyToken, AddPromoCode);
@@ -537,6 +556,7 @@ router.route('/user/booking/:id').get(verifyToken, getBookingDetails);
 router.route('/user/wishlist').get(verifyToken, getUserWishlist);
 router.route('/user/wishlist/add').post(verifyToken, addToWishlist);
 router.route('/user/wishlist/remove/:packageId').delete(verifyToken, removeFromWishlist);
+router.route('/user/rewards/active').get(GetActiveRewards);
 
 // ============================================
 // USER FEEDBACK ROUTES
@@ -623,6 +643,7 @@ router.route('/admin/community-trip/delete/:tripId').delete(verifyToken, deleteC
 router.route('/admin/community-trip/:tripId/join').post(verifyToken, joinCommunityTrip);
 router.route('/admin/community-trip/:tripId/approve').post(verifyToken, approveCommunityTrip);
 router.route('/admin/community-trip/:tripId/reject').post(verifyToken, rejectCommunityTrip);
+router.route('/admin/community-trip/:tripId/member/:userId').delete(verifyToken, removeMemberFromTrip);
 router.route('/admin/community-trip/:tripId/messages').get(verifyToken, getTripMessages);
 router.route('/admin/community-message/create').post(verifyToken, createMessage);
 router.route('/admin/community-message/:messageId').put(verifyToken, updateMessage);

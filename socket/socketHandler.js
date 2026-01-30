@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import CommunityMessage from '../models/CommunityMessageModel.js';
 import CommunityTrip from '../models/CommunityTripModel.js';
 import Admin from '../models/AdminModel.js';
-import User from '../models/UserModel.js';
+import Customer from '../models/CustomerModel.js';
 import Notification from '../models/NotificationModel.js';
 
 // Store io instance globally
@@ -92,11 +92,16 @@ export const setupSocketIO = (io) => {
         let adminId = null;
         let user = null; // Store user object for notifications
 
-        if (socket.userRole === 'admin') {
+        const isAdmin = socket.userRole && String(socket.userRole).toLowerCase().includes('admin');
+        if (isAdmin) {
           const admin = await Admin.findById(socket.userId);
           if (admin) {
             userName = admin.name || 'Admin';
             adminId = admin._id;
+          } else {
+            console.error(`Admin not found in database: ${socket.userId}`);
+            socket.emit('error', { message: 'Admin not found' });
+            return;
           }
         } else {
           if (!socket.userId) {
@@ -105,14 +110,14 @@ export const setupSocketIO = (io) => {
             return;
           }
           
-          user = await User.findById(socket.userId);
+          user = await Customer.findById(socket.userId);
           if (!user) {
             console.error(`User not found in database: ${socket.userId}`);
             socket.emit('error', { message: 'User not found' });
             return;
           }
           userName = user.name || user.email || 'User';
-          userImage = user.profileImage;
+          userImage = user.profilePicture || user.profileImage;
           userId = user._id;
 
           // Check if user is an approved member (for non-admin users)
@@ -138,11 +143,11 @@ export const setupSocketIO = (io) => {
           message,
           messageType: messageType || 'general',
           parentMessageId: parentMessageId || null,
-          isAdminReply: socket.userRole === 'admin',
+          isAdminReply: isAdmin,
         };
 
         // Set userId or adminId based on role
-        if (socket.userRole === 'admin') {
+        if (isAdmin) {
           messageData.adminId = adminId;
         } else {
           messageData.userId = userId;
@@ -304,8 +309,8 @@ export const setupSocketIO = (io) => {
           return;
         }
 
-        // Get user info
-        const user = await User.findById(userId);
+        // Get user info (frontend users are in Customer collection)
+        const user = await Customer.findById(userId);
         if (!user) {
           socket.emit('error', { message: 'User not found' });
           return;
@@ -366,11 +371,37 @@ export const setupSocketIO = (io) => {
       }
     });
 
-    // Admin joins admin room
+    // Admin joins admin room (role can be 'admin', 'Admin', 'Super Admin', etc.)
     socket.on('join-admin-room', () => {
-      if (socket.userRole === 'admin') {
+      if (socket.userRole && String(socket.userRole).toLowerCase().includes('admin')) {
         socket.join(`admin:${socket.userId}`);
         console.log(`Admin ${socket.userId} joined admin room`);
+      }
+    });
+
+    // User (customer) joins user room for booking/trip notifications
+    socket.on('join-user-room', () => {
+      if (socket.userId) {
+        socket.join(`user:${socket.userId}`);
+        console.log(`User ${socket.userId} joined user room`);
+      }
+    });
+
+    // Captain joins captain room for assignment notifications
+    socket.on('join-captain-room', (captainId) => {
+      const isAdminRole = socket.userRole && String(socket.userRole).toLowerCase().includes('admin');
+      if (captainId && (isAdminRole || socket.userRole === 'captain')) {
+        socket.join(`captain:${captainId}`);
+        console.log(`Captain ${captainId} joined captain room`);
+      }
+    });
+
+    // Vendor joins vendor room for booking notifications
+    socket.on('join-vendor-room', (vendorId) => {
+      const isAdminRole = socket.userRole && String(socket.userRole).toLowerCase().includes('admin');
+      if (vendorId && (isAdminRole || socket.userRole === 'vendor')) {
+        socket.join(`vendor:${vendorId}`);
+        console.log(`Vendor ${vendorId} joined vendor room`);
       }
     });
 

@@ -8,6 +8,9 @@ import Customer from "../../models/CustomerModel.js";
 import Slot from "../../models/SlotModel.js";
 import Captain from "../../models/CaptainModel.js";
 import Settings from "../../models/SettingsModel.js";
+import Notification from "../../models/NotificationModel.js";
+import Admin from "../../models/AdminModel.js";
+import { getIO } from "../../socket/socketHandler.js";
 import { BookCaptain } from "./captainController/BookingController.js";
 import moment from "moment-timezone";
 
@@ -848,6 +851,71 @@ export const verifyPayment = async (req, res) => {
       } catch (slotError) {
         console.error("Error creating/joining slot:", slotError);
         // Don't fail the booking if slot creation fails
+      }
+    }
+
+    // Notifications: package booked — admin(s), user, and vendor (if package has vendorId)
+    const packageTitle = packageData?.title || "Package";
+    const user = await Customer.findById(userId).select("name email").lean();
+    const userName = user?.name || user?.email || "A customer";
+
+    const admins = await Admin.find({}).lean();
+    for (const admin of admins) {
+      const notif = await Notification.create({
+        adminId: admin._id,
+        type: "package_booked",
+        title: "New Package Booking",
+        message: `${userName} booked "${packageTitle}". Booking ID: ${bookingId}`,
+        packageId: packageId,
+        bookingId: booking._id,
+        userId: userId,
+        isRead: false,
+      });
+      const io = getIO();
+      if (io) {
+        io.to(`admin:${admin._id.toString()}`).emit("admin-notification", {
+          type: "package_booked",
+          title: notif.title,
+          message: notif.message,
+          packageId,
+          bookingId: booking._id,
+          userId,
+          _id: notif._id,
+          createdAt: notif.createdAt,
+        });
+      }
+    }
+
+    await Notification.create({
+      userId,
+      type: "package_booked",
+      title: "Booking Confirmed",
+      message: `Your booking for "${packageTitle}" is confirmed. Booking ID: ${bookingId}`,
+      packageId,
+      bookingId: booking._id,
+      isRead: false,
+    });
+
+    if (packageData.vendorId) {
+      await Notification.create({
+        vendorId: packageData.vendorId,
+        type: "vendor_booking",
+        title: "New Booking for Your Package",
+        message: `${userName} booked "${packageTitle}". Booking ID: ${bookingId}`,
+        packageId,
+        bookingId: booking._id,
+        userId,
+        isRead: false,
+      });
+      const io = getIO();
+      if (io) {
+        io.to(`vendor:${packageData.vendorId.toString()}`).emit("vendor-notification", {
+          type: "vendor_booking",
+          title: "New Booking for Your Package",
+          message: `${userName} booked "${packageTitle}". Booking ID: ${bookingId}`,
+          packageId,
+          bookingId: booking._id,
+        });
       }
     }
 

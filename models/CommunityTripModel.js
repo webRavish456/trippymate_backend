@@ -74,7 +74,7 @@ const CommunityTripSchema = new mongoose.Schema({
     members: [{
         userId: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: 'User'
+            ref: 'Customer'
         },
         joinedAt: {
             type: Date,

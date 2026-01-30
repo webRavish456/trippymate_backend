@@ -355,6 +355,8 @@ const GetPackageCategories = async (req, res) => {
       "adventure": { label: "Adventure", color: "bg-red-100 text-red-700 hover:bg-red-200" },
       "family": { label: "Family", color: "bg-green-100 text-green-700 hover:bg-green-200" },
       "honeymoon": { label: "Honeymoon", color: "bg-pink-100 text-pink-700 hover:bg-pink-200" },
+      "romantic": { label: "Romantic", color: "bg-rose-100 text-rose-700 hover:bg-rose-200" },
+      "group": { label: "Group", color: "bg-blue-100 text-blue-700 hover:bg-blue-200" },
       "holiday": { label: "Holiday", color: "bg-purple-100 text-purple-700 hover:bg-purple-200" },
       "cultural": { label: "Cultural", color: "bg-orange-100 text-orange-700 hover:bg-orange-200" },
       "religious": { label: "Religious", color: "bg-yellow-100 text-yellow-700 hover:bg-yellow-200" },

@@ -1,20 +1,65 @@
 import Notification from '../../../models/NotificationModel.js';
 import CommunityTrip from '../../../models/CommunityTripModel.js';
-import Customer from '../../../models/CustomerModel.js';
 import Admin from '../../../models/AdminModel.js';
 import { getIO } from '../../../socket/socketHandler.js';
 import mongoose from 'mongoose';
+import nodemailer from 'nodemailer';
+
+const emailTransporter = process.env.EMAIL_USER && process.env.EMAIL_PASS
+  ? nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
+    })
+  : null;
+
+async function sendJoinStatusEmail(toEmail, userName, tripTitle, approved) {
+  if (!emailTransporter || !toEmail) return;
+  const subject = approved
+    ? `Your join request for "${tripTitle}" has been approved – Trippymate`
+    : `Your join request for "${tripTitle}" was not approved – Trippymate`;
+  const text = approved
+    ? `Hello ${userName || 'there'},\n\nYour request to join the community trip "${tripTitle}" has been approved. You can view the trip and connect with other members in the app.\n\nBest regards,\nTrippymate Team`
+    : `Hello ${userName || 'there'},\n\nYour request to join the community trip "${tripTitle}" was not approved this time. You can explore other community trips on Trippymate.\n\nBest regards,\nTrippymate Team`;
+  try {
+    await emailTransporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: toEmail,
+      subject,
+      text
+    });
+  } catch (err) {
+    console.error('Join status email failed:', err);
+  }
+}
+
+async function sendJoinStatusSms(phone, tripTitle, approved) {
+  if (!phone || !process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN || !process.env.TWILIO_PHONE_NUMBER) return;
+  try {
+    const twilio = (await import('twilio')).default;
+    const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+    const body = approved
+      ? `Trippymate: Your request to join "${tripTitle}" has been approved. Check the app for details.`
+      : `Trippymate: Your request to join "${tripTitle}" was not approved. Explore other trips on the app.`;
+    await client.messages.create({
+      body,
+      from: process.env.TWILIO_PHONE_NUMBER,
+      to: String(phone).replace(/\s/g, '')
+    });
+  } catch (err) {
+    console.error('Join status SMS failed:', err);
+  }
+}
 
 // Get all notifications for admin
 const getAdminNotifications = async (req, res) => {
   try {
-    // Get adminId from token - can be id, _id, or adminId
+
     let adminId = req.user?.id || req.user?._id || req.user?.adminId;
     
     console.log('Raw adminId from token:', adminId);
     console.log('req.user:', JSON.stringify(req.user, null, 2));
     
-    // Fallback: If adminId not in token, try to find admin by email
+ 
     if (!adminId && req.user?.email) {
       console.log('AdminId not in token, fetching by email:', req.user.email);
       const admin = await Admin.findOne({ email: req.user.email });
@@ -31,7 +76,7 @@ const getAdminNotifications = async (req, res) => {
       });
     }
 
-    // Convert to ObjectId if it's a string
+ 
     if (typeof adminId === 'string') {
       try {
         adminId = new mongoose.Types.ObjectId(adminId);
@@ -182,18 +227,49 @@ const approveJoinRequest = async (req, res) => {
     member.status = 'approved';
     await trip.save();
 
-    // Mark notification as read
+    // Mark notification as read and set action taken (hides Approve/Reject buttons)
     notification.isRead = true;
     notification.readAt = new Date();
+    notification.actionTaken = 'approved';
     await notification.save();
 
-    // Emit update to admin via Socket.IO
+    const requestUserId = notification.requestUserId._id || notification.requestUserId;
+    const tripTitle = trip.title || 'Community Trip';
+    const userName = notification.requestUserId?.name || notification.requestUserId?.email || 'User';
+    const userEmail = notification.requestUserId?.email;
+    const userPhone = notification.requestUserId?.phone;
+
+    // Create in-app notification for the user who was approved
+    const userNotif = await Notification.create({
+      userId: requestUserId,
+      type: 'join_request_approved',
+      title: 'Join request approved',
+      message: `Your request to join "${tripTitle}" has been approved.`,
+      tripId: trip._id,
+      isRead: false
+    });
+
+    // Send email and optional SMS to the user
+    if (userEmail) {
+      await sendJoinStatusEmail(userEmail, userName, tripTitle, true);
+    }
+    if (userPhone) {
+      await sendJoinStatusSms(userPhone, tripTitle, true);
+    }
+
+    // Emit to user so frontend can update Joined/Pending state
     const io = getIO();
     if (io) {
       io.to(`admin:${adminId}`).emit('join-request-approved', {
         notificationId: notification._id,
         tripId: trip._id,
-        userId: notification.requestUserId._id
+        userId: requestUserId
+      });
+      io.to(`user:${requestUserId.toString()}`).emit('join-request-status', {
+        tripId: trip._id,
+        status: 'approved',
+        title: userNotif.title,
+        message: userNotif.message
       });
     }
 
@@ -290,18 +366,49 @@ const rejectJoinRequest = async (req, res) => {
       await trip.save();
     }
 
-    // Mark notification as read
+    // Mark notification as read and set action taken (hides Approve/Reject buttons)
     notification.isRead = true;
     notification.readAt = new Date();
+    notification.actionTaken = 'rejected';
     await notification.save();
 
-    // Emit update to admin via Socket.IO
+    const requestUserId = notification.requestUserId._id || notification.requestUserId;
+    const tripTitle = trip.title || 'Community Trip';
+    const userName = notification.requestUserId?.name || notification.requestUserId?.email || 'User';
+    const userEmail = notification.requestUserId?.email;
+    const userPhone = notification.requestUserId?.phone;
+
+    // Create in-app notification for the user who was rejected
+    const userNotif = await Notification.create({
+      userId: requestUserId,
+      type: 'join_request_rejected',
+      title: 'Join request not approved',
+      message: `Your request to join "${tripTitle}" was not approved.`,
+      tripId: trip._id,
+      isRead: false
+    });
+
+    // Send email and optional SMS to the user
+    if (userEmail) {
+      await sendJoinStatusEmail(userEmail, userName, tripTitle, false);
+    }
+    if (userPhone) {
+      await sendJoinStatusSms(userPhone, tripTitle, false);
+    }
+
+    // Emit to user so frontend can update Pending state
     const io = getIO();
     if (io) {
       io.to(`admin:${adminId}`).emit('join-request-rejected', {
         notificationId: notification._id,
         tripId: trip._id,
-        userId: notification.requestUserId._id
+        userId: requestUserId
+      });
+      io.to(`user:${requestUserId.toString()}`).emit('join-request-status', {
+        tripId: trip._id,
+        status: 'rejected',
+        title: userNotif.title,
+        message: userNotif.message
       });
     }
 

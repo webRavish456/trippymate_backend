@@ -7,8 +7,7 @@ const initialRoles = [
     name: "Super Admin",
     status: true,
     permissions: new Map([
-
-   
+      ["roles_permissions", { create: true, read: true, update: true, delete: true }],
       ["captain_details", { create: true, read: true, update: true, delete: true }],
       ["users", { create: true, read: true, update: true, delete: true }],
       ["explore_destination", { create: true, read: true, update: true, delete: true }],
@@ -17,7 +16,6 @@ const initialRoles = [
       ["banner", { create: true, read: true, update: true, delete: true }],
       ["coupon_details", { create: true, read: true, update: true, delete: true }],
       ["promo_details", { create: true, read: true, update: true, delete: true }],
-      
 
       ["content", { create: true, read: true, update: true, delete: true }],
       
@@ -30,6 +28,7 @@ const initialRoles = [
       ["payments", { create: false, read: true, update: false, delete: false }],
       ["coupon_management", { create: false, read: true, update: false, delete: false }],
       ["promo_management", { create: false, read: true, update: false, delete: false }],
+      ["reward_management", { create: false, read: true, update: false, delete: false }],
       ["notifications", { create: false, read: true, update: false, delete: false }],
       
      

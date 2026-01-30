@@ -1,6 +1,8 @@
 import CaptainAssignment from "../../../models/CaptainAssignmentModel.js";
 import Captain from "../../../models/CaptainModel.js";
 import Packages from "../../../models/PackageModel.js";
+import Notification from "../../../models/NotificationModel.js";
+import { getIO } from "../../../socket/socketHandler.js";
 
 // Assign Captain to Package (called from Booking module)
 export const AssignCaptainToPackage = async (req, res) => {
@@ -71,6 +73,38 @@ export const AssignCaptainToPackage = async (req, res) => {
     });
 
     await newAssignment.save();
+
+    // Update booking's captainId so booking shows assigned captain
+    await Booking.findByIdAndUpdate(bookingId, { $set: { captainId } }, { new: true });
+
+    // Notify captain: assigned to booking
+    const bookingPopulated = await Booking.findById(bookingId)
+      .populate("packageId", "title")
+      .populate("userId", "name email")
+      .lean();
+    const packageTitle = bookingPopulated?.packageId?.title || "Booking";
+    const userName = bookingPopulated?.userId?.name || bookingPopulated?.userId?.email || "Customer";
+    const notif = await Notification.create({
+      captainId,
+      type: "captain_assigned",
+      title: "You have been assigned to a booking",
+      message: `You are assigned to "${packageTitle}" for ${userName}. Booking ID: ${bookingPopulated?.bookingId || bookingId}`,
+      packageId,
+      bookingId: booking._id,
+      userId: bookingPopulated?.userId?._id || booking.userId,
+      isRead: false,
+    });
+    const io = getIO();
+    if (io) {
+      io.to(`captain:${captainId.toString()}`).emit("captain-notification", {
+        type: "captain_assigned",
+        title: notif.title,
+        message: notif.message,
+        bookingId: booking._id,
+        _id: notif._id,
+        createdAt: notif.createdAt,
+      });
+    }
 
     const assignment = await CaptainAssignment.findById(newAssignment._id)
       .populate('captainId', 'name email phone')

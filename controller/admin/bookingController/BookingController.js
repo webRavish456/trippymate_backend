@@ -2,6 +2,10 @@ import moment from "moment-timezone";
 import Booking from "../../../models/BookingModel.js";
 import Coupon from "../../../models/CouponModel.js";
 import PromoCode from "../../../models/PromoCodeModel.js";
+import UserReward from "../../../models/UserRewardModel.js";
+import Notification from "../../../models/NotificationModel.js";
+import Admin from "../../../models/AdminModel.js";
+import { getIO } from "../../../socket/socketHandler.js";
 
 const showBooking = async (req, res) => {
   try {
@@ -172,12 +176,13 @@ const getBookingById = async (req, res) => {
   }
 };
 
-// Update Booking (for captain assignment)
+// Update Booking (for captain assignment, status change, etc.)
 const updateBooking = async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
 
+    const oldBooking = await Booking.findById(id).select("captainId status").lean();
     const booking = await Booking.findByIdAndUpdate(
       id,
       { $set: updateData },
@@ -192,6 +197,105 @@ const updateBooking = async (req, res) => {
         status: false,
         message: "Booking not found"
       });
+    }
+
+    // When booking is marked Completed, create 1% reward for the user (if not already created)
+    if (updateData.status === "Completed") {
+      const existingReward = await UserReward.findOne({ bookingId: id });
+      if (!existingReward && booking.userId && booking.finalAmount != null) {
+        const rewardPercent = 1;
+        const bookingAmount = Number(booking.finalAmount);
+        const rewardAmount = Math.round((bookingAmount * rewardPercent) / 100);
+        if (rewardAmount > 0) {
+          await UserReward.create({
+            userId: booking.userId._id || booking.userId,
+            bookingId: booking._id,
+            rewardPercent,
+            bookingAmount,
+            rewardAmount,
+            status: "given"
+          });
+        }
+      }
+
+      // Notifications: trip completed — admin(s) and user
+      const packageTitle = booking.packageId?.title || "Trip";
+      const userName = booking.userId?.name || booking.userId?.email || "Customer";
+      const admins = await Admin.find({}).lean();
+      for (const admin of admins) {
+        const notif = await Notification.create({
+          adminId: admin._id,
+          type: "trip_completed",
+          title: "Trip Completed",
+          message: `Trip completed for "${packageTitle}" — ${userName}. Booking ID: ${booking.bookingId || id}`,
+          packageId: booking.packageId?._id || booking.packageId,
+          bookingId: booking._id,
+          userId: booking.userId?._id || booking.userId,
+          isRead: false,
+        });
+        const io = getIO();
+        if (io) {
+          io.to(`admin:${admin._id.toString()}`).emit("admin-notification", {
+            type: "trip_completed",
+            title: notif.title,
+            message: notif.message,
+            bookingId: booking._id,
+            _id: notif._id,
+            createdAt: notif.createdAt,
+          });
+        }
+      }
+      if (booking.userId) {
+        const uid = booking.userId._id || booking.userId;
+        await Notification.create({
+          userId: uid,
+          type: "trip_completed",
+          title: "Trip Completed",
+          message: `Your trip "${packageTitle}" is completed. Thank you for traveling with us!`,
+          packageId: booking.packageId?._id || booking.packageId,
+          bookingId: booking._id,
+          isRead: false,
+        });
+        const io = getIO();
+        if (io) {
+          io.to(`user:${uid.toString()}`).emit("user-notification", {
+            type: "trip_completed",
+            title: "Trip Completed",
+            message: `Your trip "${packageTitle}" is completed. Thank you for traveling with us!`,
+            bookingId: booking._id,
+          });
+        }
+      }
+    }
+
+    // When captain is assigned to booking — notify the captain (only if newly set or changed)
+    const previousCaptainId = oldBooking?.captainId?.toString?.() || oldBooking?.captainId || null;
+    const newCaptainId = updateData.captainId?.toString?.() || updateData.captainId || null;
+    if (newCaptainId && newCaptainId !== previousCaptainId) {
+      const captainId = newCaptainId;
+      const packageTitle = booking.packageId?.title || "Booking";
+      const userName = booking.userId?.name || booking.userId?.email || "Customer";
+      const notif = await Notification.create({
+        captainId,
+        type: "captain_assigned",
+        title: "You have been assigned to a booking",
+        message: `You are assigned to "${packageTitle}" for ${userName}. Booking ID: ${booking.bookingId || id}`,
+        packageId: booking.packageId?._id || booking.packageId,
+        bookingId: booking._id,
+        userId: booking.userId?._id || booking.userId,
+        isRead: false,
+      });
+      const io = getIO();
+      if (io) {
+        io.to(`captain:${captainId.toString()}`).emit("captain-notification", {
+          type: "captain_assigned",
+          title: notif.title,
+          message: notif.message,
+          bookingId: booking._id,
+          _id: notif._id,
+          createdAt: notif.createdAt,
+        });
+      }
     }
 
     return res.status(200).json({

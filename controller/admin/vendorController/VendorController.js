@@ -327,19 +327,12 @@ const showVendors = async (req, res) => {
       .skip(skip)
       .limit(limit)
       .sort({ createdAt: -1 });
-    
-    if (vendors.length === 0) {
-      return res.status(404).json({
-        status: false,
-        message: "No vendors found"
-      });
-    }
 
-    const totalPages = Math.ceil(totalVendors / limit);
+    const totalPages = Math.max(1, Math.ceil(totalVendors / limit));
 
     return res.status(200).json({
       status: true,
-      message: "Vendors retrieved successfully",
+      message: vendors.length === 0 ? "No vendors found" : "Vendors retrieved successfully",
       data: vendors,
       pagination: {
         currentPage: page,
